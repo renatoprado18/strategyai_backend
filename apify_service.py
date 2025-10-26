@@ -50,18 +50,28 @@ async def scrape_company_website(website_url: str) -> Dict[str, Any]:
         - tech_stack: Technologies detected
         - content_summary: Summary of main content
     """
-    if not website_url:
-        return {"error": "No website URL provided"}
+    if not website_url or website_url.strip() == "":
+        return {
+            "error": "No website URL provided",
+            "scraped_successfully": False
+        }
+
+    # Validate and clean URL
+    url = website_url.strip()
+    if not url.startswith('http'):
+        url = f'https://{url}'
+
+    print(f"[APIFY DEBUG] Scraping website: {url}")
 
     try:
         client = get_apify_client()
 
-        # Run the website content crawler
+        # Run the website content crawler with validated URL
         run_input = {
-            "startUrls": [{"url": website_url}],
+            "startUrls": [{"url": url}],
             "maxCrawlDepth": 2,
             "maxCrawlPages": 5,
-            "crawler": "cheerio",
+            "crawlerType": "cheerio",
         }
 
         run = client.actor(WEBSITE_SCRAPER_ACTOR).call(
@@ -306,12 +316,17 @@ async def gather_all_apify_data(
     Returns:
         Dictionary with all gathered data
     """
+    print(f"[APIFY] gather_all_apify_data called with website={website}")
+
     # Run all Apify tasks in parallel
     tasks = []
 
     # Website scraping (if URL provided)
-    if website:
+    if website and website.strip():
+        print(f"[APIFY] Adding website scraping task for: {website}")
         tasks.append(("website_data", scrape_company_website(website)))
+    else:
+        print(f"[APIFY] No website provided, skipping website scraping")
 
     # Always run these
     tasks.append(("competitor_data", research_competitors(company, industry)))
