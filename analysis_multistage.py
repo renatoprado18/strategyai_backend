@@ -268,6 +268,118 @@ List any critical missing information that would help strategic analysis:
 
 
 # ============================================================================
+# STAGE 2: GAP ANALYSIS + FOLLOW-UP RESEARCH (Gemini Flash + Perplexity)
+# ============================================================================
+
+async def stage2_gap_analysis_and_followup(
+    company: str,
+    industry: str,
+    extracted_data: Dict[str, Any],
+    perplexity_service
+) -> Dict[str, Any]:
+    """
+    Stage 2: Identify data gaps and run targeted follow-up research
+    Model: Gemini Flash for analysis, Perplexity for follow-up queries
+    Cost: ~$0.001 (Gemini) + $0.04 (Perplexity)
+    """
+
+    logger.info("[STAGE 2] Analyzing data gaps and generating follow-up queries...")
+
+    data_gaps = extracted_data.get("data_gaps", [])
+
+    if not data_gaps or len(data_gaps) == 0:
+        logger.info("[STAGE 2] No significant data gaps identified, skipping follow-up")
+        return {
+            "follow_up_completed": False,
+            "follow_up_research": {},
+            "data_gaps_filled": 0
+        }
+
+    # Generate targeted follow-up queries
+    prompt = f"""Based on these data gaps for {company} in {industry}, generate 2-3 targeted research queries:
+
+Data Gaps Identified:
+{json.dumps(data_gaps, indent=2, ensure_ascii=False)}
+
+Current Data:
+{json.dumps(extracted_data, indent=2, ensure_ascii=False)[:2000]}
+
+Generate specific, actionable research queries that would fill the most important gaps.
+
+Return JSON:
+
+{{
+  "follow_up_queries": [
+    "Specific query 1 that addresses gap X",
+    "Specific query 2 that addresses gap Y",
+    "Specific query 3 (if needed)"
+  ],
+  "priority_gaps": [
+    "Most critical gap to fill",
+    "Second priority gap"
+  ]
+}}
+
+Focus on high-impact gaps (competitor data, market sizing, financial metrics).
+"""
+
+    system_prompt = "You are a research analyst. Generate targeted queries to fill data gaps. Output JSON only."
+
+    response = await call_llm(
+        model=MODEL_GAP_ANALYSIS,
+        prompt=prompt,
+        system_prompt=system_prompt,
+        temperature=0.3,
+        max_tokens=1000
+    )
+
+    try:
+        gap_analysis = json.loads(response)
+        follow_up_queries = gap_analysis.get("follow_up_queries", [])[:3]  # Max 3 queries
+
+        if len(follow_up_queries) == 0:
+            return {
+                "follow_up_completed": False,
+                "follow_up_research": {},
+                "data_gaps_filled": 0
+            }
+
+        # Run follow-up research with Perplexity
+        logger.info(f"[STAGE 2] Running {len(follow_up_queries)} follow-up research queries...")
+
+        follow_up_results = {}
+        for i, query in enumerate(follow_up_queries):
+            try:
+                result = await perplexity_service.call_perplexity(query, max_tokens=3000)
+                if result:
+                    follow_up_results[f"followup_{i+1}"] = {
+                        "query": query,
+                        "research": result
+                    }
+                    logger.info(f"[STAGE 2] ✅ Follow-up {i+1} completed")
+            except Exception as e:
+                logger.warning(f"[STAGE 2] Follow-up {i+1} failed: {str(e)}")
+                continue
+
+        logger.info(f"[STAGE 2] ✅ Completed {len(follow_up_results)}/{len(follow_up_queries)} follow-up queries")
+
+        return {
+            "follow_up_completed": True,
+            "follow_up_research": follow_up_results,
+            "data_gaps_filled": len(follow_up_results),
+            "priority_gaps": gap_analysis.get("priority_gaps", [])
+        }
+
+    except json.JSONDecodeError as e:
+        logger.error(f"[STAGE 2] JSON parse error: {e}")
+        return {
+            "follow_up_completed": False,
+            "follow_up_research": {},
+            "data_gaps_filled": 0
+        }
+
+
+# ============================================================================
 # STAGE 3: STRATEGIC FRAMEWORKS (GPT-4o - EXPENSIVE)
 # ============================================================================
 
@@ -622,6 +734,283 @@ Return JSON only. No markdown, no explanations.
 
 
 # ============================================================================
+# STAGE 4: COMPETITIVE INTELLIGENCE MATRIX (Gemini Pro)
+# ============================================================================
+
+async def stage4_competitive_matrix(
+    company: str,
+    industry: str,
+    extracted_data: Dict[str, Any],
+    strategic_analysis: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Stage 4: Generate structured competitive intelligence matrix
+    Model: Gemini Pro (great at structured data)
+    Cost: ~$0.05 per call
+    """
+
+    logger.info("[STAGE 4] Generating competitive intelligence matrix...")
+
+    competitors_data = extracted_data.get("competitors", [])
+    positioning = strategic_analysis.get("posicionamento_competitivo", {})
+
+    prompt = f"""Generate a structured competitive intelligence matrix for {company} in {industry}.
+
+Competitor Data:
+{json.dumps(competitors_data, indent=2, ensure_ascii=False)}
+
+Positioning Analysis:
+{json.dumps(positioning, indent=2, ensure_ascii=False)}
+
+Create a comprehensive competitive matrix with:
+
+Return JSON:
+
+{{
+  "competitive_matrix": {{
+    "competitors": ["{company}", "Competitor A", "Competitor B", "Competitor C"],
+    "features": ["Pricing", "Tech Stack", "Market Share", "Strengths", "Weaknesses", "Growth Rate", "Funding"],
+    "matrix": [
+      ["{company}", "Value", "Value", "Value", "..."],
+      ["Competitor A", "Value", "Value", "Value", "..."],
+      ["Competitor B", "..."]
+    ]
+  }},
+
+  "positioning_map": {{
+    "x_axis": "Price (Low to High)",
+    "y_axis": "Features (Basic to Advanced)",
+    "positions": [
+      {{"company": "{company}", "x": 5, "y": 7}},
+      {{"company": "Competitor A", "x": 7, "y": 8}},
+      {{"company": "Competitor B", "x": 3, "y": 5}}
+    ],
+    "quadrants": {{
+      "low_price_basic": ["Companies here"],
+      "low_price_advanced": ["Companies here"],
+      "high_price_basic": ["Companies here"],
+      "high_price_advanced": ["Companies here"]
+    }}
+  }},
+
+  "swot_per_competitor": [
+    {{
+      "company": "Competitor A",
+      "strengths": ["Strength 1", "Strength 2"],
+      "weaknesses": ["Weakness 1"],
+      "opportunities": ["Opportunity for them"],
+      "threats": ["Threat they face"]
+    }}
+  ],
+
+  "competitive_gaps": [
+    {{
+      "gap": "Market gap description",
+      "opportunity_for_company": "How {company} can exploit this",
+      "estimated_market_size": "R$ X million",
+      "difficulty": "Low/Medium/High"
+    }}
+  ],
+
+  "competitive_threats": [
+    {{
+      "threat": "Threat description",
+      "source": "Which competitor",
+      "timeline": "When it's coming",
+      "impact": "High/Medium/Low",
+      "mitigation": "How to defend"
+    }}
+  ]
+}}
+
+Use real data from extracted data. If data missing, use "N/A" or "Estimated: X".
+Be specific and actionable.
+"""
+
+    system_prompt = "You are a competitive intelligence analyst. Create structured, data-driven competitive matrices. Output JSON only."
+
+    response = await call_llm(
+        model=MODEL_COMPETITIVE,
+        prompt=prompt,
+        system_prompt=system_prompt,
+        temperature=0.4,
+        max_tokens=4000
+    )
+
+    try:
+        competitive_intel = json.loads(response)
+        logger.info(f"[STAGE 4] ✅ Generated competitive matrix with {len(competitive_intel.get('competitive_matrix', {}).get('competitors', []))} competitors")
+        return competitive_intel
+    except json.JSONDecodeError as e:
+        logger.error(f"[STAGE 4] JSON parse error: {e}")
+        logger.error(f"[STAGE 4] Response preview: {response[:500]}")
+        return {
+            "competitive_matrix": {},
+            "positioning_map": {},
+            "swot_per_competitor": [],
+            "competitive_gaps": [],
+            "competitive_threats": []
+        }
+
+
+# ============================================================================
+# STAGE 5: RISK QUANTIFICATION + PRIORITY SCORING (Claude 3.5 Sonnet)
+# ============================================================================
+
+async def stage5_risk_and_priority(
+    company: str,
+    strategic_analysis: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Stage 5: Quantify risks and score recommendations by priority
+    Model: Claude 3.5 Sonnet (best reasoning)
+    Cost: ~$0.08 per call
+    """
+
+    logger.info("[STAGE 5] Quantifying risks and scoring recommendations...")
+
+    recommendations = strategic_analysis.get("recomendacoes_prioritarias", [])
+    swot = strategic_analysis.get("analise_swot", {})
+    scenarios = strategic_analysis.get("planejamento_cenarios", {})
+
+    prompt = f"""For {company}, quantify risks and score recommendations by priority.
+
+Recommendations:
+{json.dumps(recommendations, indent=2, ensure_ascii=False)}
+
+SWOT Analysis:
+{json.dumps(swot, indent=2, ensure_ascii=False)}
+
+Scenarios:
+{json.dumps(scenarios, indent=2, ensure_ascii=False)}
+
+Return JSON:
+
+{{
+  "risk_analysis": [
+    {{
+      "risk": "Risk description",
+      "category": "Competitive/Market/Operational/Financial/Technology",
+      "probability": 0.7,
+      "impact": 8,
+      "risk_score": 5.6,
+      "severity": "HIGH/MEDIUM/LOW",
+      "timeframe": "3-6 months",
+      "indicators": ["Early warning sign 1", "Early warning sign 2"],
+      "mitigation_cost": "R$ 50k",
+      "mitigation_strategies": [
+        "Specific action 1 with timeline",
+        "Specific action 2",
+        "Contingency plan"
+      ]
+    }}
+  ],
+
+  "recommendation_scoring": [
+    {{
+      "recommendation": "Recommendation title from input",
+      "effort_score": 3,
+      "impact_score": 9,
+      "efficiency_ratio": 3.0,
+      "priority_tier": "🔥 VERY HIGH / ⚡ HIGH / ✓ MEDIUM / ○ LOW",
+      "roi_calculation": {{
+        "investment": "R$ 50k",
+        "expected_return_12m": "R$ 360k",
+        "roi_percentage": 620,
+        "payback_period_days": 45,
+        "risk_adjusted_return": {{
+          "best_case": "R$ 900k (25% probability)",
+          "expected_case": "R$ 360k (50% probability)",
+          "worst_case": "R$ 120k (25% probability)"
+        }}
+      }},
+      "dependencies": ["What must happen first"],
+      "blockers": ["Potential obstacles"]
+    }}
+  ],
+
+  "priority_matrix": {{
+    "quick_wins": [
+      {{
+        "action": "Low effort, high impact action",
+        "effort": 2,
+        "impact": 8,
+        "timeline": "0-30 days"
+      }}
+    ],
+    "strategic_investments": [
+      {{
+        "action": "High effort, high impact action",
+        "effort": 8,
+        "impact": 9,
+        "timeline": "3-6 months"
+      }}
+    ],
+    "fill_ins": [
+      {{
+        "action": "Low effort, medium impact",
+        "effort": 2,
+        "impact": 5,
+        "timeline": "As resources allow"
+      }}
+    ],
+    "avoid": [
+      {{
+        "action": "High effort, low impact - avoid",
+        "effort": 7,
+        "impact": 3,
+        "reason": "Why to avoid"
+      }}
+    ]
+  }},
+
+  "critical_path": [
+    {{
+      "month": 1,
+      "milestone": "Milestone name",
+      "actions": ["Action 1", "Action 2"],
+      "success_criteria": "How to measure success",
+      "risks": ["Risk during this month"]
+    }}
+  ]
+}}
+
+Scoring scale:
+- Probability: 0.0-1.0 (0% to 100%)
+- Impact: 1-10 (1=minimal, 10=catastrophic)
+- Effort: 1-10 (1=trivial, 10=massive)
+- Risk Score = Probability × Impact
+
+Be specific, quantitative, and actionable.
+"""
+
+    system_prompt = "You are a strategic risk analyst. Quantify risks, calculate ROI, prioritize ruthlessly. Output JSON only."
+
+    response = await call_llm(
+        model=MODEL_RISK_SCORING,
+        prompt=prompt,
+        system_prompt=system_prompt,
+        temperature=0.5,
+        max_tokens=6000
+    )
+
+    try:
+        risk_priority = json.loads(response)
+        logger.info(f"[STAGE 5] ✅ Scored {len(risk_priority.get('risk_analysis', []))} risks, "
+                   f"{len(risk_priority.get('recommendation_scoring', []))} recommendations")
+        return risk_priority
+    except json.JSONDecodeError as e:
+        logger.error(f"[STAGE 5] JSON parse error: {e}")
+        logger.error(f"[STAGE 5] Response preview: {response[:500]}")
+        return {
+            "risk_analysis": [],
+            "recommendation_scoring": [],
+            "priority_matrix": {},
+            "critical_path": []
+        }
+
+
+# ============================================================================
 # MAIN ORCHESTRATOR
 # ============================================================================
 
@@ -632,53 +1021,121 @@ async def generate_multistage_analysis(
     challenge: Optional[str],
     apify_data: Optional[Dict[str, Any]] = None,
     perplexity_data: Optional[Dict[str, Any]] = None,
+    run_all_stages: bool = True,
+    perplexity_service = None
 ) -> Dict[str, Any]:
     """
     Main orchestrator for multi-stage analysis pipeline
+
+    Args:
+        company: Company name
+        industry: Industry sector
+        website: Company website
+        challenge: Business challenge
+        apify_data: Web scraping data
+        perplexity_data: Initial Perplexity research
+        run_all_stages: If True, run all 6 stages. If False, run only core stages (1,3,6)
+        perplexity_service: Perplexity service instance for follow-up research
 
     Returns: Complete strategic analysis with metadata
     """
 
     start_time = datetime.now()
-    logger.info(f"[MULTISTAGE] Starting analysis for {company} in {industry}")
+    logger.info(f"[MULTISTAGE] Starting {'FULL' if run_all_stages else 'CORE'} analysis for {company} in {industry}")
 
     try:
-        # Stage 1: Extract structured data (CHEAP - Gemini Flash)
+        # ===== STAGE 1: Extract structured data (CHEAP - Gemini Flash) =====
         extracted_data = await stage1_extract_data(
             company, industry, website, challenge, apify_data, perplexity_data
         )
 
-        # Stage 3: Strategic frameworks (EXPENSIVE - GPT-4o)
+        stages_completed = ["extraction"]
+        models_used = {"stage1_extraction": MODEL_EXTRACTION}
+        follow_up_data = {}
+
+        # ===== STAGE 2: Gap analysis + follow-up (OPTIONAL) =====
+        if run_all_stages and perplexity_service:
+            try:
+                follow_up_data = await stage2_gap_analysis_and_followup(
+                    company, industry, extracted_data, perplexity_service
+                )
+                stages_completed.append("gap_analysis_followup")
+                models_used["stage2_gap_analysis"] = MODEL_GAP_ANALYSIS
+            except Exception as e:
+                logger.warning(f"[MULTISTAGE] Stage 2 failed (non-critical): {str(e)}")
+                follow_up_data = {"follow_up_completed": False}
+
+        # ===== STAGE 3: Strategic frameworks (EXPENSIVE - GPT-4o) =====
         strategic_analysis = await stage3_strategic_analysis(
             company, industry, challenge, extracted_data
         )
+        stages_completed.append("strategic_analysis")
+        models_used["stage3_strategy"] = MODEL_STRATEGY
 
-        # Stage 6: Executive polish (CHEAP - Claude Haiku)
+        competitive_intel = {}
+        risk_priority = {}
+
+        # ===== STAGE 4: Competitive matrix (OPTIONAL) =====
+        if run_all_stages:
+            try:
+                competitive_intel = await stage4_competitive_matrix(
+                    company, industry, extracted_data, strategic_analysis
+                )
+                stages_completed.append("competitive_matrix")
+                models_used["stage4_competitive"] = MODEL_COMPETITIVE
+            except Exception as e:
+                logger.warning(f"[MULTISTAGE] Stage 4 failed (non-critical): {str(e)}")
+                competitive_intel = {}
+
+        # ===== STAGE 5: Risk scoring + priority (OPTIONAL) =====
+        if run_all_stages:
+            try:
+                risk_priority = await stage5_risk_and_priority(
+                    company, strategic_analysis
+                )
+                stages_completed.append("risk_priority_scoring")
+                models_used["stage5_risk"] = MODEL_RISK_SCORING
+            except Exception as e:
+                logger.warning(f"[MULTISTAGE] Stage 5 failed (non-critical): {str(e)}")
+                risk_priority = {}
+
+        # ===== STAGE 6: Executive polish (CHEAP - Claude Haiku) =====
         final_analysis = await stage6_executive_polish(
             company, strategic_analysis
         )
+        stages_completed.append("executive_polish")
+        models_used["stage6_polish"] = MODEL_POLISH
 
-        # Add metadata
+        # ===== MERGE ADVANCED ANALYSIS =====
+        # Add competitive intel, risk analysis, and follow-up research to final output
+        if competitive_intel:
+            final_analysis["inteligencia_competitiva"] = competitive_intel
+
+        if risk_priority:
+            final_analysis["analise_risco_prioridade"] = risk_priority
+
+        if follow_up_data and follow_up_data.get("follow_up_completed"):
+            final_analysis["pesquisa_adicional"] = follow_up_data
+
+        # ===== ADD METADATA =====
         end_time = datetime.now()
         processing_time = (end_time - start_time).total_seconds()
 
         final_analysis["_metadata"] = {
             "generated_at": end_time.isoformat(),
             "processing_time_seconds": processing_time,
-            "pipeline": "multi-stage-v1",
-            "stages_completed": ["extraction", "strategic_analysis", "executive_polish"],
-            "models_used": {
-                "stage1_extraction": MODEL_EXTRACTION,
-                "stage3_strategy": MODEL_STRATEGY,
-                "stage6_polish": MODEL_POLISH
-            },
-            "framework_version": "10XMentorAI v2.1 Multistage",
-            "quality_tier": "Professional",
+            "pipeline": "multi-stage-v2-full" if run_all_stages else "multi-stage-v2-core",
+            "stages_completed": stages_completed,
+            "models_used": models_used,
+            "framework_version": "10XMentorAI v2.2 Complete",
+            "quality_tier": "LEGENDARY" if run_all_stages else "Professional",
             "used_perplexity": perplexity_data is not None and perplexity_data.get("research_completed", False),
-            "data_gaps_identified": len(extracted_data.get("data_gaps", []))
+            "data_gaps_identified": len(extracted_data.get("data_gaps", [])),
+            "data_gaps_filled": follow_up_data.get("data_gaps_filled", 0) if follow_up_data else 0,
+            "total_cost_estimate_usd": 0.85 if run_all_stages else 0.09
         }
 
-        logger.info(f"[MULTISTAGE] ✅ Analysis complete in {processing_time:.1f}s")
+        logger.info(f"[MULTISTAGE] ✅ {len(stages_completed)}-stage analysis complete in {processing_time:.1f}s")
         return final_analysis
 
     except Exception as e:
