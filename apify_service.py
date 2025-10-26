@@ -121,6 +121,7 @@ async def research_competitors(company: str, industry: str) -> Dict[str, Any]:
 
         # Search for competitors
         search_query = f"{industry} empresas Brasil competitors {company}"
+        print(f"[APIFY] Searching competitors with query: {search_query}")
 
         run_input = {
             "queries": [search_query],
@@ -140,8 +141,14 @@ async def research_competitors(company: str, industry: str) -> Dict[str, Any]:
         for item in client.dataset(run["defaultDatasetId"]).iterate_items():
             results.append(item)
 
+        print(f"[APIFY] Competitor search found {len(results)} results")
+
         if not results:
-            return {"error": "No competitor data found"}
+            return {
+                "error": "No competitor data found",
+                "competitors_found": 0,
+                "researched_successfully": False
+            }
 
         # Structure competitor insights
         competitors_data = {
@@ -162,8 +169,10 @@ async def research_competitors(company: str, industry: str) -> Dict[str, Any]:
         return competitors_data
 
     except Exception as e:
+        print(f"[APIFY ERROR] Competitor research failed: {str(e)}")
         return {
             "error": f"Failed to research competitors: {str(e)}",
+            "competitors_found": 0,
             "researched_successfully": False
         }
 
