@@ -128,7 +128,7 @@ async def research_competitors(company: str, industry: str) -> Dict[str, Any]:
             "maxPagesPerQuery": 3,
             "resultsPerPage": 10,
             "countryCode": "br",
-            "languageCode": "pt"
+            "languageCode": "pt-BR"
         }
 
         run = client.actor(WEB_SEARCH_ACTOR).call(
@@ -204,7 +204,7 @@ async def research_industry_trends(industry: str) -> Dict[str, Any]:
                 "maxPagesPerQuery": 2,
                 "resultsPerPage": 5,
                 "countryCode": "br",
-                "languageCode": "pt"
+                "languageCode": "pt-BR"
             }
 
             run = client.actor(WEB_SEARCH_ACTOR).call(
@@ -267,7 +267,7 @@ async def enrich_company_data(company: str, website: Optional[str] = None) -> Di
             "maxPagesPerQuery": 2,
             "resultsPerPage": 10,
             "countryCode": "br",
-            "languageCode": "pt"
+            "languageCode": "pt-BR"
         }
 
         run = client.actor(WEB_SEARCH_ACTOR).call(
@@ -332,7 +332,7 @@ async def scrape_linkedin_company(linkedin_url: Optional[str], company_name: str
             "maxPagesPerQuery": 1,
             "resultsPerPage": 5,
             "countryCode": "br",
-            "languageCode": "pt"
+            "languageCode": "pt-BR"
         }
 
         run = client.actor(WEB_SEARCH_ACTOR).call(
@@ -396,7 +396,7 @@ async def scrape_linkedin_founder(linkedin_url: Optional[str], founder_name: Opt
             "maxPagesPerQuery": 1,
             "resultsPerPage": 5,
             "countryCode": "br",
-            "languageCode": "pt"
+            "languageCode": "pt-BR"
         }
 
         run = client.actor(WEB_SEARCH_ACTOR).call(
@@ -457,7 +457,7 @@ async def search_company_news(company: str, industry: str) -> Dict[str, Any]:
                 "maxPagesPerQuery": 2,
                 "resultsPerPage": 10,
                 "countryCode": "br",
-                "languageCode": "pt"
+                "languageCode": "pt-BR"
             }
 
             run = client.actor(WEB_SEARCH_ACTOR).call(
@@ -528,7 +528,7 @@ async def search_social_media_presence(company: str, website: Optional[str] = No
                 "maxPagesPerQuery": 2,
                 "resultsPerPage": 10,
                 "countryCode": "br",
-                "languageCode": "pt"
+                "languageCode": "pt-BR"
             }
 
             run = client.actor(WEB_SEARCH_ACTOR).call(

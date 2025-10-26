@@ -5,10 +5,13 @@ Multi-model orchestration for premium consulting-grade reports
 import json
 import httpx
 import asyncio
+import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -534,6 +537,8 @@ async def generate_enhanced_analysis(
 
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            logger.info(f"[AI] Sending request to {model} (prompt length: {len(prompt)} chars)")
+
             response = await client.post(
                 OPENROUTER_URL,
                 headers=headers,
@@ -545,6 +550,25 @@ async def generate_enhanced_analysis(
 
             if "choices" in data and len(data["choices"]) > 0:
                 content = data["choices"][0]["message"]["content"]
+
+                # Check for refusal
+                if content and ("I'm sorry" in content or "I cannot" in content or "I can't" in content) and len(content) < 200:
+                    logger.error(f"[AI] Model refused request: {content}")
+
+                    # Retry without Perplexity data if we had it
+                    if perplexity_data:
+                        logger.warning("[AI] Retrying without Perplexity data due to content filter...")
+                        return await generate_enhanced_analysis(
+                            company=company,
+                            industry=industry,
+                            website=website,
+                            challenge=challenge,
+                            apify_data=apify_data,
+                            perplexity_data=None,  # Remove Perplexity data
+                            use_multi_model=use_multi_model
+                        )
+                    else:
+                        raise Exception(f"AI model refused request: {content}")
 
                 # Clean markdown code blocks
                 content = content.strip()
@@ -565,12 +589,14 @@ async def generate_enhanced_analysis(
                         "generated_at": datetime.now().isoformat(),
                         "model_used": model,
                         "framework_version": "10XMentorAI v2.0",
-                        "quality_tier": "Premium Executive"
+                        "quality_tier": "Premium Executive",
+                        "used_perplexity": perplexity_data is not None
                     }
 
                     return analysis_json
 
                 except json.JSONDecodeError as e:
+                    logger.error(f"[AI] JSON parse error. Content: {content[:1000]}")
                     raise Exception(f"Failed to parse AI response as JSON: {e}. Content preview: {content[:500]}")
             else:
                 raise Exception(f"Unexpected API response: {data}")
@@ -580,6 +606,8 @@ async def generate_enhanced_analysis(
     except httpx.HTTPStatusError as e:
         raise Exception(f"OpenRouter API error: {e.response.status_code} - {e.response.text}")
     except Exception as e:
+        if "refused request" in str(e):
+            raise e
         raise Exception(f"Enhanced analysis failed: {str(e)}")
 
 
