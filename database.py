@@ -80,8 +80,8 @@ async def create_submission(
             "status": "pending"
         }
 
-        # Use anon client for public submission (RLS allows INSERT for anyone)
-        response = supabase_anon.table(TABLE_NAME).insert(data).execute()
+        # Use service client to bypass RLS (backend handles authorization)
+        response = supabase_service.table(TABLE_NAME).insert(data).execute()
 
         if response.data and len(response.data) > 0:
             return response.data[0]["id"]
