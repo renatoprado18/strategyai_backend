@@ -63,9 +63,28 @@ def verify_token(token: str) -> Dict[str, Any]:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+async def check_is_admin(user_id: str) -> bool:
+    """
+    Check if a user has admin access in the admin_users table.
+
+    Args:
+        user_id: User's UUID from auth.users
+
+    Returns:
+        True if user is an active admin, False otherwise
+    """
+    supabase = get_supabase_client(use_service_key=True)
+    try:
+        response = supabase.table("admin_users").select("*").eq("user_id", user_id).eq("is_active", True).is_("revoked_at", "null").execute()
+        return len(response.data) > 0 if response.data else False
+    except Exception as e:
+        print(f"[ERROR] Failed to check admin status: {e}")
+        return False
+
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
     """
     Dependency to get current authenticated user from JWT token.
+    Verifies both authentication AND admin access.
 
     Args:
         credentials: HTTP Bearer credentials from request
@@ -74,7 +93,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         User data dictionary with id and email
 
     Raises:
-        HTTPException: If authentication fails
+        HTTPException: If authentication fails or user is not an admin
     """
     token = credentials.credentials
     payload = verify_token(token)
@@ -103,14 +122,24 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             detail=f"Authentication error: {str(e)}"
         )
 
+    # Check if user has admin access
+    is_admin = await check_is_admin(user_id)
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Admin privileges required. Please contact support to request access."
+        )
+
     return {
         "id": user_id,
-        "email": email
+        "email": email,
+        "is_admin": True
     }
 
 async def authenticate_user(email: str, password: str) -> Dict[str, Any]:
     """
     Authenticate user with email and password using Supabase Auth.
+    Also verifies user has admin access in admin_users table.
 
     Args:
         email: User's email address
@@ -120,7 +149,7 @@ async def authenticate_user(email: str, password: str) -> Dict[str, Any]:
         Dictionary with user data and access token
 
     Raises:
-        HTTPException: If authentication fails
+        HTTPException: If authentication fails or user is not an admin
     """
     supabase = get_supabase_client(use_service_key=False)
 
@@ -135,6 +164,14 @@ async def authenticate_user(email: str, password: str) -> Dict[str, Any]:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password"
+            )
+
+        # Check if user has admin access
+        is_admin = await check_is_admin(response.user.id)
+        if not is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. Your account does not have admin privileges. Please contact support to request access."
             )
 
         # Create our own JWT token for subsequent requests
