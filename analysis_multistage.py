@@ -33,6 +33,81 @@ MODEL_RISK_SCORING = "anthropic/claude-3.5-sonnet"  # EXPENSIVE: Best reasoning
 MODEL_POLISH = "anthropic/claude-haiku-4.5"  # CHEAP: $0.25/M in, $1.25/M out
 
 TIMEOUT = 120.0
+MAX_RETRIES = 3  # Maximum retry attempts per stage
+
+
+async def call_llm_with_retry(
+    stage_name: str,
+    model: str,
+    prompt: str,
+    system_prompt: str = "",
+    temperature: float = 0.7,
+    max_tokens: int = 4000,
+    max_retries: int = MAX_RETRIES
+) -> str:
+    """
+    Call LLM with automatic retry logic and progressive temperature reduction
+
+    Args:
+        stage_name: Name of the stage for logging
+        model: Model to use
+        prompt: User prompt
+        system_prompt: System prompt
+        temperature: Initial temperature (will be reduced on retries)
+        max_tokens: Max tokens
+        max_retries: Maximum retry attempts
+
+    Returns:
+        Valid JSON string
+    """
+    last_error = None
+
+    for attempt in range(max_retries):
+        try:
+            # Reduce temperature on retries for more deterministic output
+            current_temp = temperature * (0.7 ** attempt)
+
+            # Make prompt stricter on retries
+            if attempt > 0:
+                strict_prompt = f"{prompt}\n\n**CRITICAL: Output ONLY valid JSON. No markdown, no code blocks, no explanations. Start with {{ and end with }}.**"
+                logger.warning(f"[{stage_name}] Retry {attempt + 1}/{max_retries} with temperature {current_temp:.2f}")
+            else:
+                strict_prompt = prompt
+
+            response = await call_llm(
+                model=model,
+                prompt=strict_prompt,
+                system_prompt=system_prompt or "Output JSON ONLY. No markdown. No explanations.",
+                temperature=current_temp,
+                max_tokens=max_tokens
+            )
+
+            # Validate JSON
+            json.loads(response)  # Will raise JSONDecodeError if invalid
+
+            logger.info(f"[{stage_name}] ✅ Valid JSON received (attempt {attempt + 1})")
+            return response
+
+        except json.JSONDecodeError as e:
+            last_error = e
+            logger.error(f"[{stage_name}] JSON parse error on attempt {attempt + 1}: {e}")
+            logger.error(f"[{stage_name}] Response preview: {response[:1000] if 'response' in locals() else 'No response'}")
+
+            if attempt == max_retries - 1:
+                # Last attempt - log full response
+                logger.error(f"[{stage_name}] All {max_retries} attempts failed!")
+                logger.error(f"[{stage_name}] Full response: {response if 'response' in locals() else 'No response'}")
+                raise Exception(f"{stage_name} failed after {max_retries} attempts: {e}")
+
+        except Exception as e:
+            last_error = e
+            logger.error(f"[{stage_name}] LLM call failed on attempt {attempt + 1}: {str(e)}")
+
+            if attempt == max_retries - 1:
+                raise Exception(f"{stage_name} failed after {max_retries} attempts: {str(e)}")
+
+    # Should never reach here, but just in case
+    raise Exception(f"{stage_name} failed: {last_error}")
 
 
 async def call_llm(
@@ -270,7 +345,8 @@ List any critical missing information that would help strategic analysis:
 
     system_prompt = "You are a data extraction specialist. Extract facts, skip fluff. Output JSON only."
 
-    response = await call_llm(
+    response = await call_llm_with_retry(
+        stage_name="STAGE 1",
         model=MODEL_EXTRACTION,
         prompt=prompt,
         system_prompt=system_prompt,
@@ -278,16 +354,11 @@ List any critical missing information that would help strategic analysis:
         max_tokens=4000
     )
 
-    try:
-        extracted_data = json.loads(response)
-        logger.info(f"[STAGE 1] ✅ Extracted {len(extracted_data.get('competitors', []))} competitors, "
-                   f"{len(extracted_data.get('industry_trends', []))} trends, "
-                   f"{len(extracted_data.get('data_gaps', []))} gaps identified")
-        return extracted_data
-    except json.JSONDecodeError as e:
-        logger.error(f"[STAGE 1] JSON parse error: {e}")
-        logger.error(f"[STAGE 1] Response preview: {response[:500]}")
-        raise Exception(f"Stage 1 failed to parse JSON: {e}")
+    extracted_data = json.loads(response)
+    logger.info(f"[STAGE 1] ✅ Extracted {len(extracted_data.get('competitors', []))} competitors, "
+               f"{len(extracted_data.get('industry_trends', []))} trends, "
+               f"{len(extracted_data.get('data_gaps', []))} gaps identified")
+    return extracted_data
 
 
 # ============================================================================
@@ -348,7 +419,8 @@ Focus on high-impact gaps (competitor data, market sizing, financial metrics).
 
     system_prompt = "You are a research analyst. Generate targeted queries to fill data gaps. Output JSON only."
 
-    response = await call_llm(
+    response = await call_llm_with_retry(
+        stage_name="STAGE 2",
         model=MODEL_GAP_ANALYSIS,
         prompt=prompt,
         system_prompt=system_prompt,
@@ -356,8 +428,7 @@ Focus on high-impact gaps (competitor data, market sizing, financial metrics).
         max_tokens=1000
     )
 
-    try:
-        gap_analysis = json.loads(response)
+    gap_analysis = json.loads(response)
         follow_up_queries = gap_analysis.get("follow_up_queries", [])[:3]  # Max 3 queries
 
         if len(follow_up_queries) == 0:
@@ -638,7 +709,8 @@ Create 3 scenarios:
 
     system_prompt = "You are a world-class strategy consultant. Apply frameworks rigorously. Be specific, data-driven, actionable."
 
-    response = await call_llm(
+    response = await call_llm_with_retry(
+        stage_name="STAGE 3",
         model=MODEL_STRATEGY,
         prompt=prompt,
         system_prompt=system_prompt,
@@ -646,35 +718,9 @@ Create 3 scenarios:
         max_tokens=8000
     )
 
-    try:
-        strategic_analysis = json.loads(response)
-        logger.info(f"[STAGE 3] ✅ Generated strategic analysis with {len(strategic_analysis.get('okrs_propostos', []))} OKRs")
-        return strategic_analysis
-    except json.JSONDecodeError as e:
-        logger.error(f"[STAGE 3] JSON parse error: {e}")
-        logger.error(f"[STAGE 3] Full response length: {len(response)}")
-        logger.error(f"[STAGE 3] Response first 1000 chars: {response[:1000]}")
-        logger.error(f"[STAGE 3] Response last 500 chars: {response[-500:]}")
-
-        # Try one more time with explicit JSON-only instruction
-        logger.warning("[STAGE 3] Retrying with stricter JSON-only prompt...")
-        retry_prompt = f"{prompt}\n\n**CRITICAL: Output ONLY valid JSON. No explanations, no markdown, no code blocks. Start with {{ and end with }}.**"
-        retry_response = await call_llm(
-            model=MODEL_STRATEGY,
-            prompt=retry_prompt,
-            system_prompt="Output JSON ONLY. No markdown. No explanations.",
-            temperature=0.5,  # Lower temperature
-            max_tokens=8000
-        )
-
-        try:
-            strategic_analysis = json.loads(retry_response)
-            logger.info(f"[STAGE 3] ✅ Retry successful! Generated strategic analysis")
-            return strategic_analysis
-        except json.JSONDecodeError as e2:
-            logger.error(f"[STAGE 3] Retry also failed: {e2}")
-            logger.error(f"[STAGE 3] Retry response preview: {retry_response[:1000]}")
-            raise Exception(f"Stage 3 failed to parse JSON after retry: {e}")
+    strategic_analysis = json.loads(response)
+    logger.info(f"[STAGE 3] ✅ Generated strategic analysis with {len(strategic_analysis.get('okrs_propostos', []))} OKRs")
+    return strategic_analysis
 
 
 # ============================================================================
@@ -759,7 +805,8 @@ Return JSON only. No markdown, no explanations.
 
     system_prompt = "You are an expert at executive communications. Polish for clarity and impact. Preserve structure and data."
 
-    response = await call_llm(
+    response = await call_llm_with_retry(
+        stage_name="STAGE 6",
         model=MODEL_POLISH,
         prompt=prompt,
         system_prompt=system_prompt,
@@ -767,14 +814,9 @@ Return JSON only. No markdown, no explanations.
         max_tokens=10000
     )
 
-    try:
-        polished_analysis = json.loads(response)
-        logger.info(f"[STAGE 6] ✅ Report polished for executive readability")
-        return polished_analysis
-    except json.JSONDecodeError as e:
-        logger.error(f"[STAGE 6] JSON parse error: {e}")
-        logger.error(f"[STAGE 6] Response preview: {response[:500]}")
-        raise Exception(f"Stage 6 failed to parse JSON: {e}")
+    polished_analysis = json.loads(response)
+    logger.info(f"[STAGE 6] ✅ Report polished for executive readability")
+    return polished_analysis
 
 
 # ============================================================================
@@ -873,7 +915,8 @@ Be specific and actionable.
 
     system_prompt = "You are a competitive intelligence analyst. Create structured, data-driven competitive matrices. Output JSON only."
 
-    response = await call_llm(
+    response = await call_llm_with_retry(
+        stage_name="STAGE 4",
         model=MODEL_COMPETITIVE,
         prompt=prompt,
         system_prompt=system_prompt,
@@ -881,20 +924,9 @@ Be specific and actionable.
         max_tokens=4000
     )
 
-    try:
-        competitive_intel = json.loads(response)
-        logger.info(f"[STAGE 4] ✅ Generated competitive matrix with {len(competitive_intel.get('competitive_matrix', {}).get('competitors', []))} competitors")
-        return competitive_intel
-    except json.JSONDecodeError as e:
-        logger.error(f"[STAGE 4] JSON parse error: {e}")
-        logger.error(f"[STAGE 4] Response preview: {response[:500]}")
-        return {
-            "competitive_matrix": {},
-            "positioning_map": {},
-            "swot_per_competitor": [],
-            "competitive_gaps": [],
-            "competitive_threats": []
-        }
+    competitive_intel = json.loads(response)
+    logger.info(f"[STAGE 4] ✅ Generated competitive matrix with {len(competitive_intel.get('competitive_matrix', {}).get('competitors', []))} competitors")
+    return competitive_intel
 
 
 # ============================================================================
@@ -1030,7 +1062,8 @@ Be specific, quantitative, and actionable.
 
     system_prompt = "You are a strategic risk analyst. Quantify risks, calculate ROI, prioritize ruthlessly. Output JSON only."
 
-    response = await call_llm(
+    response = await call_llm_with_retry(
+        stage_name="STAGE 5",
         model=MODEL_RISK_SCORING,
         prompt=prompt,
         system_prompt=system_prompt,
@@ -1038,20 +1071,10 @@ Be specific, quantitative, and actionable.
         max_tokens=6000
     )
 
-    try:
-        risk_priority = json.loads(response)
-        logger.info(f"[STAGE 5] ✅ Scored {len(risk_priority.get('risk_analysis', []))} risks, "
-                   f"{len(risk_priority.get('recommendation_scoring', []))} recommendations")
-        return risk_priority
-    except json.JSONDecodeError as e:
-        logger.error(f"[STAGE 5] JSON parse error: {e}")
-        logger.error(f"[STAGE 5] Response preview: {response[:500]}")
-        return {
-            "risk_analysis": [],
-            "recommendation_scoring": [],
-            "priority_matrix": {},
-            "critical_path": []
-        }
+    risk_priority = json.loads(response)
+    logger.info(f"[STAGE 5] ✅ Scored {len(risk_priority.get('risk_analysis', []))} risks, "
+               f"{len(risk_priority.get('recommendation_scoring', []))} recommendations")
+    return risk_priority
 
 
 # ============================================================================
