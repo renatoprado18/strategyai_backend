@@ -298,25 +298,291 @@ async def enrich_company_data(company: str, website: Optional[str] = None) -> Di
             "enriched_successfully": False
         }
 
+async def scrape_linkedin_company(linkedin_url: Optional[str], company_name: str) -> Dict[str, Any]:
+    """
+    Extract information about company from LinkedIn or search results.
+
+    Args:
+        linkedin_url: LinkedIn company page URL (optional)
+        company_name: Company name for fallback search
+
+    Returns:
+        Dictionary with LinkedIn company data
+    """
+    try:
+        client = get_apify_client()
+
+        # If LinkedIn URL provided, search for it; otherwise search for company
+        if linkedin_url and linkedin_url.strip():
+            search_query = f'site:linkedin.com/company {linkedin_url}'
+        else:
+            search_query = f'site:linkedin.com/company "{company_name}"'
+
+        run_input = {
+            "queries": [search_query],
+            "maxPagesPerQuery": 1,
+            "resultsPerPage": 5,
+            "countryCode": "br",
+            "languageCode": "pt"
+        }
+
+        run = client.actor(WEB_SEARCH_ACTOR).call(
+            run_input=run_input,
+            timeout_secs=SCRAPER_TIMEOUT_SECONDS
+        )
+
+        results = []
+        for item in client.dataset(run["defaultDatasetId"]).iterate_items():
+            results.append(item)
+
+        if not results:
+            return {
+                "error": "No LinkedIn company data found",
+                "scraped_successfully": False
+            }
+
+        linkedin_data = {
+            "linkedin_url": linkedin_url or results[0].get("url", ""),
+            "company_description": results[0].get("description", ""),
+            "insights": " ".join([r.get("description", "") for r in results[:3]]),
+            "scraped_successfully": True
+        }
+
+        return linkedin_data
+
+    except Exception as e:
+        return {
+            "error": f"Failed to scrape LinkedIn company: {str(e)}",
+            "scraped_successfully": False
+        }
+
+async def scrape_linkedin_founder(linkedin_url: Optional[str], founder_name: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Extract information about founder/CEO from LinkedIn.
+
+    Args:
+        linkedin_url: LinkedIn founder profile URL (optional)
+        founder_name: Founder name for fallback search (optional)
+
+    Returns:
+        Dictionary with LinkedIn founder data
+    """
+    if not linkedin_url and not founder_name:
+        return {
+            "error": "No founder LinkedIn URL or name provided",
+            "scraped_successfully": False
+        }
+
+    try:
+        client = get_apify_client()
+
+        # Search for founder profile
+        if linkedin_url and linkedin_url.strip():
+            search_query = f'site:linkedin.com/in {linkedin_url}'
+        else:
+            search_query = f'site:linkedin.com/in "{founder_name}" CEO founder'
+
+        run_input = {
+            "queries": [search_query],
+            "maxPagesPerQuery": 1,
+            "resultsPerPage": 5,
+            "countryCode": "br",
+            "languageCode": "pt"
+        }
+
+        run = client.actor(WEB_SEARCH_ACTOR).call(
+            run_input=run_input,
+            timeout_secs=SCRAPER_TIMEOUT_SECONDS
+        )
+
+        results = []
+        for item in client.dataset(run["defaultDatasetId"]).iterate_items():
+            results.append(item)
+
+        if not results:
+            return {
+                "error": "No LinkedIn founder data found",
+                "scraped_successfully": False
+            }
+
+        founder_data = {
+            "linkedin_url": linkedin_url or results[0].get("url", ""),
+            "profile_description": results[0].get("description", ""),
+            "insights": " ".join([r.get("description", "") for r in results[:3]]),
+            "scraped_successfully": True
+        }
+
+        return founder_data
+
+    except Exception as e:
+        return {
+            "error": f"Failed to scrape LinkedIn founder: {str(e)}",
+            "scraped_successfully": False
+        }
+
+async def search_company_news(company: str, industry: str) -> Dict[str, Any]:
+    """
+    Search for recent news articles about the company.
+
+    Args:
+        company: Company name
+        industry: Industry sector
+
+    Returns:
+        Dictionary with news articles and insights
+    """
+    try:
+        client = get_apify_client()
+
+        # Search for recent news
+        search_queries = [
+            f'"{company}" notícias 2024 2025',
+            f'"{company}" {industry} Brasil news',
+        ]
+
+        all_results = []
+
+        for query in search_queries:
+            run_input = {
+                "queries": [query],
+                "maxPagesPerQuery": 2,
+                "resultsPerPage": 10,
+                "countryCode": "br",
+                "languageCode": "pt"
+            }
+
+            run = client.actor(WEB_SEARCH_ACTOR).call(
+                run_input=run_input,
+                timeout_secs=SCRAPER_TIMEOUT_SECONDS
+            )
+
+            for item in client.dataset(run["defaultDatasetId"]).iterate_items():
+                all_results.append(item)
+
+        if not all_results:
+            return {
+                "error": "No news articles found",
+                "researched_successfully": False
+            }
+
+        news_data = {
+            "company": company,
+            "articles_found": len(all_results),
+            "recent_news": [
+                {
+                    "title": r.get("title", ""),
+                    "description": r.get("description", ""),
+                    "url": r.get("url", "")
+                }
+                for r in all_results[:10]
+            ],
+            "news_summary": " ".join([r.get("description", "") for r in all_results[:5]]),
+            "researched_successfully": True
+        }
+
+        return news_data
+
+    except Exception as e:
+        return {
+            "error": f"Failed to search company news: {str(e)}",
+            "researched_successfully": False
+        }
+
+async def search_social_media_presence(company: str, website: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Search for company's social media presence and public mentions.
+
+    Args:
+        company: Company name
+        website: Company website for validation (optional)
+
+    Returns:
+        Dictionary with social media presence data
+    """
+    try:
+        client = get_apify_client()
+
+        # Search for social media profiles
+        search_queries = [
+            f'"{company}" Instagram Facebook Twitter social media',
+            f'"{company}" avaliações reviews clientes',
+        ]
+
+        if website:
+            search_queries.append(f'site:instagram.com OR site:facebook.com OR site:twitter.com "{company}"')
+
+        all_results = []
+
+        for query in search_queries:
+            run_input = {
+                "queries": [query],
+                "maxPagesPerQuery": 2,
+                "resultsPerPage": 10,
+                "countryCode": "br",
+                "languageCode": "pt"
+            }
+
+            run = client.actor(WEB_SEARCH_ACTOR).call(
+                run_input=run_input,
+                timeout_secs=SCRAPER_TIMEOUT_SECONDS
+            )
+
+            for item in client.dataset(run["defaultDatasetId"]).iterate_items():
+                all_results.append(item)
+
+        if not all_results:
+            return {
+                "error": "No social media presence found",
+                "researched_successfully": False
+            }
+
+        social_data = {
+            "company": company,
+            "mentions_found": len(all_results),
+            "social_profiles": [
+                {
+                    "title": r.get("title", ""),
+                    "description": r.get("description", ""),
+                    "url": r.get("url", "")
+                }
+                for r in all_results[:10]
+            ],
+            "public_sentiment": " ".join([r.get("description", "") for r in all_results[:5]]),
+            "researched_successfully": True
+        }
+
+        return social_data
+
+    except Exception as e:
+        return {
+            "error": f"Failed to search social media: {str(e)}",
+            "researched_successfully": False
+        }
+
 async def gather_all_apify_data(
     company: str,
     industry: str,
     website: Optional[str] = None,
+    linkedin_company: Optional[str] = None,
+    linkedin_founder: Optional[str] = None,
     challenge: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Gather all Apify data in parallel for comprehensive analysis.
+    Now includes LinkedIn profiles, news, and social media data.
 
     Args:
         company: Company name
         industry: Industry sector
         website: Company website URL (optional)
+        linkedin_company: LinkedIn company page URL (optional)
+        linkedin_founder: LinkedIn founder profile URL (optional)
         challenge: Business challenge (optional)
 
     Returns:
         Dictionary with all gathered data
     """
-    print(f"[APIFY] gather_all_apify_data called with website={website}")
+    print(f"[APIFY] gather_all_apify_data called with website={website}, linkedin_company={linkedin_company}, linkedin_founder={linkedin_founder}")
 
     # Run all Apify tasks in parallel
     tasks = []
@@ -328,20 +594,34 @@ async def gather_all_apify_data(
     else:
         print(f"[APIFY] No website provided, skipping website scraping")
 
-    # Always run these
+    # Core data gathering (always run)
     tasks.append(("competitor_data", research_competitors(company, industry)))
     tasks.append(("industry_trends", research_industry_trends(industry)))
     tasks.append(("company_enrichment", enrich_company_data(company, website)))
+
+    # NEW: LinkedIn data gathering
+    if linkedin_company or True:  # Always try to find LinkedIn company
+        print(f"[APIFY] Adding LinkedIn company scraping task")
+        tasks.append(("linkedin_company_data", scrape_linkedin_company(linkedin_company, company)))
+
+    if linkedin_founder:
+        print(f"[APIFY] Adding LinkedIn founder scraping task")
+        tasks.append(("linkedin_founder_data", scrape_linkedin_founder(linkedin_founder)))
+
+    # NEW: Public data gathering (news and social media)
+    print(f"[APIFY] Adding news and social media scraping tasks")
+    tasks.append(("news_data", search_company_news(company, industry)))
+    tasks.append(("social_media_data", search_social_media_presence(company, website)))
 
     # Execute all tasks concurrently
     results = {}
     task_dict = dict(tasks)
 
     try:
-        # Run with overall timeout
+        # Run with extended timeout for more data sources
         gathered = await asyncio.wait_for(
             asyncio.gather(*task_dict.values(), return_exceptions=True),
-            timeout=90  # 90 second overall timeout
+            timeout=120  # 120 second overall timeout (extended for more sources)
         )
 
         # Map results back to keys

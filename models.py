@@ -28,11 +28,13 @@ class StatusEnum(str, Enum):
 # Request Models
 
 class SubmissionCreate(BaseModel):
-    """Lead form submission request"""
+    """Lead form submission request with LinkedIn fields for enhanced analysis"""
     name: str
     email: EmailStr
     company: str
     website: Optional[str] = None
+    linkedin_company: Optional[str] = None
+    linkedin_founder: Optional[str] = None
     industry: IndustryEnum
     challenge: Optional[str] = None
 

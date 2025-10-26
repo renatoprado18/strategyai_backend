@@ -90,7 +90,7 @@ async def process_analysis_task(submission_id: int):
 
         print(f"[PROCESSING] Processing analysis for submission {submission_id}...")
 
-        # Step 1: Gather Apify data (web scraping, competitor research, trends)
+        # Step 1: Gather Apify data (web scraping, competitor research, trends, LinkedIn, news, social media)
         print(f"[APIFY] Gathering enrichment data for {submission['company']}...")
         apify_data = None
         data_quality = {
@@ -98,6 +98,10 @@ async def process_analysis_task(submission_id: int):
             "competitors_found": 0,
             "trends_researched": False,
             "company_enriched": False,
+            "linkedin_company_found": False,
+            "linkedin_founder_found": False,
+            "news_found": False,
+            "social_media_found": False,
             "sources_succeeded": 0,
             "sources_failed": 0,
             "failed_sources": [],
@@ -109,26 +113,53 @@ async def process_analysis_task(submission_id: int):
                 company=submission["company"],
                 industry=submission["industry"],
                 website=submission.get("website"),
+                linkedin_company=submission.get("linkedin_company"),
+                linkedin_founder=submission.get("linkedin_founder"),
                 challenge=submission.get("challenge"),
             )
             print(f"[APIFY] Data gathering completed for submission {submission_id}")
 
-            # Extract data quality metrics
+            # LOG: Detailed breakdown of what each source returned
+            print(f"[APIFY RESULTS] ===== DATA SOURCES BREAKDOWN =====")
+            print(f"[APIFY RESULTS] Website Data: {'✅ SUCCESS' if apify_data.get('website_data', {}).get('scraped_successfully') else '❌ FAILED'}")
+            print(f"[APIFY RESULTS] Competitors: {apify_data.get('competitor_data', {}).get('competitors_found', 0)} found")
+            print(f"[APIFY RESULTS] Industry Trends: {'✅ SUCCESS' if apify_data.get('industry_trends', {}).get('researched_successfully') else '❌ FAILED'}")
+            print(f"[APIFY RESULTS] Company Enrichment: {'✅ SUCCESS' if apify_data.get('company_enrichment', {}).get('enriched_successfully') else '❌ FAILED'}")
+            print(f"[APIFY RESULTS] LinkedIn Company: {'✅ SUCCESS' if apify_data.get('linkedin_company_data', {}).get('scraped_successfully') else '❌ FAILED'}")
+            print(f"[APIFY RESULTS] LinkedIn Founder: {'✅ SUCCESS' if apify_data.get('linkedin_founder_data', {}).get('scraped_successfully') else '❌ FAILED'}")
+            print(f"[APIFY RESULTS] News Articles: {'✅ SUCCESS' if apify_data.get('news_data', {}).get('researched_successfully') else '❌ FAILED'}")
+            print(f"[APIFY RESULTS] Social Media: {'✅ SUCCESS' if apify_data.get('social_media_data', {}).get('researched_successfully') else '❌ FAILED'}")
+            print(f"[APIFY RESULTS] =====================================")
+
+            # Extract data quality metrics (now includes 8 data sources)
             if apify_data:
+                # Core sources (original 4)
                 data_quality["website_scraped"] = apify_data.get("website_data", {}).get("scraped_successfully", False)
                 data_quality["competitors_found"] = apify_data.get("competitor_data", {}).get("competitors_found", 0)
                 data_quality["trends_researched"] = apify_data.get("industry_trends", {}).get("researched_successfully", False)
                 data_quality["company_enriched"] = apify_data.get("company_enrichment", {}).get("enriched_successfully", False)
 
-                # Count successes
+                # NEW: LinkedIn sources
+                data_quality["linkedin_company_found"] = apify_data.get("linkedin_company_data", {}).get("scraped_successfully", False)
+                data_quality["linkedin_founder_found"] = apify_data.get("linkedin_founder_data", {}).get("scraped_successfully", False)
+
+                # NEW: Public data sources
+                data_quality["news_found"] = apify_data.get("news_data", {}).get("researched_successfully", False)
+                data_quality["social_media_found"] = apify_data.get("social_media_data", {}).get("researched_successfully", False)
+
+                # Count successes from all 8 sources
                 successes = sum([
                     data_quality["website_scraped"],
                     data_quality["competitors_found"] > 0,
                     data_quality["trends_researched"],
-                    data_quality["company_enriched"]
+                    data_quality["company_enriched"],
+                    data_quality["linkedin_company_found"],
+                    data_quality["linkedin_founder_found"],
+                    data_quality["news_found"],
+                    data_quality["social_media_found"]
                 ])
                 data_quality["sources_succeeded"] = successes
-                data_quality["sources_failed"] = 4 - successes
+                data_quality["sources_failed"] = 8 - successes
 
                 # Track failed sources
                 if not data_quality["website_scraped"] and submission.get("website"):
@@ -139,23 +170,41 @@ async def process_analysis_task(submission_id: int):
                     data_quality["failed_sources"].append("industry_trends")
                 if not data_quality["company_enriched"]:
                     data_quality["failed_sources"].append("company_enrichment")
+                if not data_quality["linkedin_company_found"]:
+                    data_quality["failed_sources"].append("linkedin_company")
+                if not data_quality["linkedin_founder_found"] and submission.get("linkedin_founder"):
+                    data_quality["failed_sources"].append("linkedin_founder")
+                if not data_quality["news_found"]:
+                    data_quality["failed_sources"].append("news_articles")
+                if not data_quality["social_media_found"]:
+                    data_quality["failed_sources"].append("social_media")
 
-                # Calculate quality tier
-                if successes >= 4:
+                # Calculate quality tier (8 sources total, more granular tiers)
+                completion_rate = successes / 8
+                if completion_rate >= 0.75:  # 6-8 sources = 75-100%
                     data_quality["quality_tier"] = "full"
-                elif successes == 3:
+                elif completion_rate >= 0.5:  # 4-5 sources = 50-74%
                     data_quality["quality_tier"] = "good"
-                elif successes == 2:
+                elif completion_rate >= 0.25:  # 2-3 sources = 25-49%
                     data_quality["quality_tier"] = "partial"
-                else:
+                else:  # 0-1 sources = 0-24%
                     data_quality["quality_tier"] = "minimal"
 
-                data_quality["data_completeness"] = f"{int((successes / 4) * 100)}%"
+                data_quality["data_completeness"] = f"{int(completion_rate * 100)}%"
+
+                # LOG: Final quality summary
+                print(f"[DATA QUALITY] ===== FINAL SUMMARY =====")
+                print(f"[DATA QUALITY] Sources Succeeded: {successes}/8")
+                print(f"[DATA QUALITY] Quality Tier: {data_quality['quality_tier'].upper()}")
+                print(f"[DATA QUALITY] Data Completeness: {data_quality['data_completeness']}")
+                if data_quality["failed_sources"]:
+                    print(f"[DATA QUALITY] Failed Sources: {', '.join(data_quality['failed_sources'])}")
+                print(f"[DATA QUALITY] =====================================")
 
         except Exception as e:
             print(f"[WARNING] Apify enrichment failed: {str(e)}. Continuing with basic analysis...")
             apify_data = None
-            data_quality["sources_failed"] = 4
+            data_quality["sources_failed"] = 8
             data_quality["failed_sources"] = ["all_sources_failed"]
 
         # Step 2: Generate enhanced AI analysis with 10XMentorAI frameworks
@@ -369,6 +418,8 @@ async def submit_lead(
             email=submission.email,
             company=submission.company,
             website=normalized_website,
+            linkedin_company=submission.linkedin_company,
+            linkedin_founder=submission.linkedin_founder,
             industry=submission.industry.value,
             challenge=submission.challenge,
         )

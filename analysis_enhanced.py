@@ -32,22 +32,62 @@ def build_enhanced_prompt(
 ) -> str:
     """Build comprehensive 10XMentorAI-based strategic analysis prompt"""
 
-    # Build enrichment context
+    # Build enrichment context with ALL public data sources
     enrichment_context = ""
     if apify_data and apify_data.get("apify_enabled"):
-        enrichment_context = "\n\n## DADOS DE MERCADO E PESQUISA\n\n"
+        enrichment_context = "\n\n## DADOS DE MERCADO E PESQUISA (FONTES PÚBLICAS)\n\n"
 
+        # Core website data
         if "website_data" in apify_data:
             web = apify_data["website_data"]
-            enrichment_context += f"**Website da Empresa:**\n{web.get('content_summary', 'N/A')}\n\n"
+            if web.get('scraped_successfully'):
+                enrichment_context += f"**Website da Empresa:**\n{web.get('content_summary', 'N/A')}\n\n"
 
+        # LinkedIn company insights
+        if "linkedin_company_data" in apify_data:
+            linkedin = apify_data["linkedin_company_data"]
+            if linkedin.get('scraped_successfully'):
+                enrichment_context += f"**LinkedIn da Empresa:**\n{linkedin.get('company_description', 'N/A')}\n"
+                enrichment_context += f"Insights: {linkedin.get('insights', 'N/A')}\n\n"
+
+        # LinkedIn founder insights
+        if "linkedin_founder_data" in apify_data:
+            founder = apify_data["linkedin_founder_data"]
+            if founder.get('scraped_successfully'):
+                enrichment_context += f"**LinkedIn do Fundador/CEO:**\n{founder.get('profile_description', 'N/A')}\n"
+                enrichment_context += f"Insights de Liderança: {founder.get('insights', 'N/A')}\n\n"
+
+        # News and media coverage
+        if "news_data" in apify_data:
+            news = apify_data["news_data"]
+            if news.get('researched_successfully'):
+                enrichment_context += f"**Notícias e Cobertura de Mídia:**\n{news.get('news_summary', 'N/A')}\n"
+                enrichment_context += f"Total de artigos encontrados: {news.get('articles_found', 0)}\n\n"
+
+        # Social media presence and sentiment
+        if "social_media_data" in apify_data:
+            social = apify_data["social_media_data"]
+            if social.get('researched_successfully'):
+                enrichment_context += f"**Presença em Redes Sociais e Sentimento Público:**\n{social.get('public_sentiment', 'N/A')}\n"
+                enrichment_context += f"Total de menções encontradas: {social.get('mentions_found', 0)}\n\n"
+
+        # Competitor analysis
         if "competitor_data" in apify_data:
             comp = apify_data["competitor_data"]
-            enrichment_context += f"**Análise de Concorrentes:**\n{comp.get('market_insights', 'N/A')}\n\n"
+            if comp.get('researched_successfully'):
+                enrichment_context += f"**Análise de Concorrentes:**\n{comp.get('market_insights', 'N/A')}\n\n"
 
+        # Industry trends
         if "industry_trends" in apify_data:
             trends = apify_data["industry_trends"]
-            enrichment_context += f"**Tendências do Setor:**\n{trends.get('summary', 'N/A')}\n\n"
+            if trends.get('researched_successfully'):
+                enrichment_context += f"**Tendências do Setor ({industry}):**\n{trends.get('summary', 'N/A')}\n\n"
+
+        # Company enrichment
+        if "company_enrichment" in apify_data:
+            enrich = apify_data["company_enrichment"]
+            if enrich.get('enriched_successfully'):
+                enrichment_context += f"**Dados Adicionais da Empresa:**\n{enrich.get('summary', 'N/A')}\n\n"
 
     prompt = f"""# CONTEXTO E MISSÃO
 

@@ -65,16 +65,20 @@ async def create_submission(
     email: str,
     company: str,
     website: Optional[str],
+    linkedin_company: Optional[str],
+    linkedin_founder: Optional[str],
     industry: str,
     challenge: Optional[str],
 ) -> int:
-    """Create a new submission"""
+    """Create a new submission with LinkedIn fields for enhanced analysis"""
     try:
         data = {
             "name": name,
             "email": email,
             "company": company,
             "website": website,
+            "linkedin_company": linkedin_company,
+            "linkedin_founder": linkedin_founder,
             "industry": industry,
             "challenge": challenge,
             "status": "pending"

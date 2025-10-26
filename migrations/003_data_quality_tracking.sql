@@ -2,10 +2,10 @@
 -- Date: 2025-10-26
 -- Purpose: Track Apify data quality and AI processing metadata for transparency
 
--- Add new columns to submissions table
+-- Add new columns to submissions table (using JSONB for better querying)
 ALTER TABLE submissions
-ADD COLUMN IF NOT EXISTS data_quality_json TEXT,
-ADD COLUMN IF NOT EXISTS processing_metadata TEXT;
+ADD COLUMN IF NOT EXISTS data_quality_json JSONB,
+ADD COLUMN IF NOT EXISTS processing_metadata JSONB;
 
 -- Add indexes for querying by data quality
 CREATE INDEX IF NOT EXISTS idx_data_quality ON submissions USING gin (data_quality_json jsonb_path_ops);
