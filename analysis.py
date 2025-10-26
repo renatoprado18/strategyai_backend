@@ -26,8 +26,9 @@ def build_analysis_prompt(
     industry: str,
     website: Optional[str],
     challenge: Optional[str],
+    apify_data: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """Build the prompt for AI analysis"""
+    """Build the prompt for AI analysis with Apify enrichment"""
 
     website_instruction = ""
     if website:
@@ -37,12 +38,47 @@ def build_analysis_prompt(
     if challenge:
         challenge_context = f"\n\nDesafio atual mencionado pela empresa: \"{challenge}\""
 
+    # Build Apify enrichment context
+    apify_context = ""
+    if apify_data and apify_data.get("apify_enabled"):
+        apify_context = "\n\n**DADOS DE PESQUISA E ENRIQUECIMENTO (use para enriquecer sua análise):**\n"
+
+        # Website data
+        if "website_data" in apify_data and apify_data["website_data"].get("scraped_successfully"):
+            web_data = apify_data["website_data"]
+            apify_context += f"\n• **Website Analisado:** {web_data.get('title', 'N/A')}\n"
+            apify_context += f"  Descrição: {web_data.get('description', 'N/A')[:200]}\n"
+            apify_context += f"  Resumo do conteúdo: {web_data.get('content_summary', 'N/A')[:300]}\n"
+
+        # Competitor research
+        if "competitor_data" in apify_data and apify_data["competitor_data"].get("researched_successfully"):
+            comp_data = apify_data["competitor_data"]
+            apify_context += f"\n• **Pesquisa de Concorrentes:**\n"
+            apify_context += f"  {comp_data.get('competitors_found', 0)} resultados encontrados\n"
+            apify_context += f"  Insights: {comp_data.get('market_insights', 'N/A')[:300]}\n"
+
+        # Industry trends
+        if "industry_trends" in apify_data and apify_data["industry_trends"].get("researched_successfully"):
+            trends = apify_data["industry_trends"]
+            apify_context += f"\n• **Tendências do Setor {industry}:**\n"
+            apify_context += f"  {trends.get('trends_found', 0)} insights coletados\n"
+            apify_context += f"  Resumo: {trends.get('summary', 'N/A')[:400]}\n"
+
+        # Company enrichment
+        if "company_enrichment" in apify_data and apify_data["company_enrichment"].get("enriched_successfully"):
+            enrichment = apify_data["company_enrichment"]
+            apify_context += f"\n• **Informações Adicionais da Empresa:**\n"
+            apify_context += f"  {enrichment.get('enrichment_sources', 0)} fontes consultadas\n"
+            apify_context += f"  Resumo: {enrichment.get('summary', 'N/A')[:300]}\n"
+
+        apify_context += "\n**Use estes dados reais para tornar sua análise mais precisa e específica.**\n"
+
     prompt = f"""Você é um consultor estratégico sênior especializado em análise empresarial.
 
 Sua tarefa é gerar uma análise estratégica completa e acionável para a seguinte empresa:
 
 **Nome da Empresa:** {company}
-**Setor/Indústria:** {industry}{website_instruction}{challenge_context}
+**Setor/Indústria:** {industry}{website_instruction}{challenge_context}{apify_context}
 
 Gere um relatório estruturado em JSON com os seguintes componentes:
 
@@ -123,9 +159,17 @@ async def generate_analysis(
     industry: str,
     website: Optional[str],
     challenge: Optional[str],
+    apify_data: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Generate AI analysis using OpenRouter API
+    Generate AI analysis using OpenRouter API with optional Apify enrichment
+
+    Args:
+        company: Company name
+        industry: Industry sector
+        website: Company website URL
+        challenge: Business challenge
+        apify_data: Optional enriched data from Apify services
 
     Returns:
         Dict containing the analysis report
@@ -137,7 +181,7 @@ async def generate_analysis(
     if not OPENROUTER_API_KEY:
         raise ValueError("OPENROUTER_API_KEY not set in environment variables")
 
-    prompt = build_analysis_prompt(company, industry, website, challenge)
+    prompt = build_analysis_prompt(company, industry, website, challenge, apify_data)
 
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",

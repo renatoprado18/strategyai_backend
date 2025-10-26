@@ -152,3 +152,31 @@ class ErrorResponse(BaseModel):
     """Standard error response"""
     success: bool = False
     error: str
+
+
+# Authentication Models
+
+class LoginRequest(BaseModel):
+    """Login request with email and password"""
+    email: EmailStr
+    password: str
+
+
+class UserResponse(BaseModel):
+    """User information response"""
+    id: str
+    email: str
+
+
+class TokenResponse(BaseModel):
+    """Authentication token response"""
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+
+
+class LoginResponse(BaseModel):
+    """Login response"""
+    success: bool
+    data: Optional[TokenResponse] = None
+    error: Optional[str] = None

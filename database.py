@@ -1,50 +1,61 @@
 """
-Database module for SQLite connection and operations
+Database module for Supabase connection and operations
 """
-import aiosqlite
-import asyncio
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pathlib import Path
+from supabase_client import supabase_service, supabase_anon
 
-DATABASE_FILE = "database.db"
-
-# SQL Schema
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS submissions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    company TEXT NOT NULL,
-    website TEXT,
-    industry TEXT NOT NULL,
-    challenge TEXT,
-    status TEXT DEFAULT 'pending',
-    report_json TEXT,
-    error_message TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_status ON submissions(status);
-CREATE INDEX IF NOT EXISTS idx_created ON submissions(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_email ON submissions(email);
-"""
+# Table name
+TABLE_NAME = "submissions"
 
 
 async def init_db():
-    """Initialize the database with schema"""
-    async with aiosqlite.connect(DATABASE_FILE) as db:
-        await db.executescript(SCHEMA)
-        await db.commit()
-    print(f"[OK] Database initialized: {DATABASE_FILE}")
+    """
+    Initialize the database with schema.
+    Note: In Supabase, you should create the table manually via SQL editor or dashboard.
 
+    SQL to run in Supabase SQL Editor:
 
-async def get_db() -> aiosqlite.Connection:
-    """Get database connection"""
-    db = await aiosqlite.connect(DATABASE_FILE)
-    db.row_factory = aiosqlite.Row
-    return db
+    CREATE TABLE IF NOT EXISTS submissions (
+        id BIGSERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        company TEXT NOT NULL,
+        website TEXT,
+        industry TEXT NOT NULL,
+        challenge TEXT,
+        status TEXT DEFAULT 'pending',
+        report_json TEXT,
+        error_message TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_status ON submissions(status);
+    CREATE INDEX IF NOT EXISTS idx_created ON submissions(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_email ON submissions(email);
+
+    -- Enable Row Level Security
+    ALTER TABLE submissions ENABLE ROW LEVEL SECURITY;
+
+    -- Policy: Anyone can insert (for public form submission)
+    CREATE POLICY "Anyone can insert submissions"
+        ON submissions FOR INSERT
+        WITH CHECK (true);
+
+    -- Policy: Only authenticated users can view all submissions
+    CREATE POLICY "Authenticated users can view all submissions"
+        ON submissions FOR SELECT
+        USING (auth.role() = 'authenticated');
+
+    -- Policy: Only authenticated users can update submissions
+    CREATE POLICY "Authenticated users can update submissions"
+        ON submissions FOR UPDATE
+        USING (auth.role() = 'authenticated');
+    """
+    print("[INFO] Supabase database initialization")
+    print("[INFO] Make sure you've created the submissions table in Supabase SQL Editor")
+    print("[INFO] See database.py docstring for SQL schema")
 
 
 # CRUD Operations
@@ -58,38 +69,53 @@ async def create_submission(
     challenge: Optional[str],
 ) -> int:
     """Create a new submission"""
-    async with await get_db() as db:
-        cursor = await db.execute(
-            """
-            INSERT INTO submissions (name, email, company, website, industry, challenge, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'pending')
-            """,
-            (name, email, company, website, industry, challenge),
-        )
-        await db.commit()
-        return cursor.lastrowid
+    try:
+        data = {
+            "name": name,
+            "email": email,
+            "company": company,
+            "website": website,
+            "industry": industry,
+            "challenge": challenge,
+            "status": "pending"
+        }
+
+        # Use anon client for public submission (RLS allows INSERT for anyone)
+        response = supabase_anon.table(TABLE_NAME).insert(data).execute()
+
+        if response.data and len(response.data) > 0:
+            return response.data[0]["id"]
+        else:
+            raise Exception("Failed to create submission")
+    except Exception as e:
+        print(f"[ERROR] Failed to create submission: {str(e)}")
+        raise
 
 
 async def get_submission(submission_id: int) -> Optional[Dict[str, Any]]:
     """Get a submission by ID"""
-    async with await get_db() as db:
-        cursor = await db.execute(
-            "SELECT * FROM submissions WHERE id = ?", (submission_id,)
-        )
-        row = await cursor.fetchone()
-        if row:
-            return dict(row)
+    try:
+        # Use service client to bypass RLS
+        response = supabase_service.table(TABLE_NAME).select("*").eq("id", submission_id).execute()
+
+        if response.data and len(response.data) > 0:
+            return response.data[0]
+        return None
+    except Exception as e:
+        print(f"[ERROR] Failed to get submission {submission_id}: {str(e)}")
         return None
 
 
 async def get_all_submissions() -> List[Dict[str, Any]]:
     """Get all submissions ordered by created_at DESC"""
-    async with await get_db() as db:
-        cursor = await db.execute(
-            "SELECT * FROM submissions ORDER BY created_at DESC"
-        )
-        rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
+    try:
+        # Use service client to bypass RLS
+        response = supabase_service.table(TABLE_NAME).select("*").order("created_at", desc=True).execute()
+
+        return response.data if response.data else []
+    except Exception as e:
+        print(f"[ERROR] Failed to get all submissions: {str(e)}")
+        return []
 
 
 async def update_submission_status(
@@ -99,25 +125,34 @@ async def update_submission_status(
     error_message: Optional[str] = None,
 ):
     """Update submission status and report"""
-    async with await get_db() as db:
-        await db.execute(
-            """
-            UPDATE submissions
-            SET status = ?, report_json = ?, error_message = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            (status, report_json, error_message, submission_id),
-        )
-        await db.commit()
+    try:
+        data = {
+            "status": status,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+
+        if report_json is not None:
+            data["report_json"] = report_json
+
+        if error_message is not None:
+            data["error_message"] = error_message
+
+        # Use service client to bypass RLS
+        response = supabase_service.table(TABLE_NAME).update(data).eq("id", submission_id).execute()
+
+        if not response.data:
+            raise Exception(f"Failed to update submission {submission_id}")
+    except Exception as e:
+        print(f"[ERROR] Failed to update submission status: {str(e)}")
+        raise
 
 
 async def get_submissions_by_ip_today(ip_address: str) -> int:
     """
     Get count of submissions from an IP today.
-    Note: This is a simplified version. In production, you'd store IP addresses.
-    For MVP, we'll use in-memory rate limiting in the main app.
+    Note: This is now handled by Upstash Redis in rate_limiter.py
+    This function is kept for backward compatibility but returns 0.
     """
-    # This is a placeholder - actual implementation will be in-memory for MVP
     return 0
 
 
@@ -125,23 +160,21 @@ async def get_submissions_by_ip_today(ip_address: str) -> int:
 
 async def count_submissions() -> int:
     """Count total submissions"""
-    async with await get_db() as db:
-        cursor = await db.execute("SELECT COUNT(*) FROM submissions")
-        row = await cursor.fetchone()
-        return row[0] if row else 0
+    try:
+        # Use service client
+        response = supabase_service.table(TABLE_NAME).select("id", count="exact").execute()
+        return response.count if hasattr(response, 'count') else 0
+    except Exception as e:
+        print(f"[ERROR] Failed to count submissions: {str(e)}")
+        return 0
 
 
 async def count_submissions_by_status(status: str) -> int:
     """Count submissions by status"""
-    async with await get_db() as db:
-        cursor = await db.execute(
-            "SELECT COUNT(*) FROM submissions WHERE status = ?", (status,)
-        )
-        row = await cursor.fetchone()
-        return row[0] if row else 0
-
-
-if __name__ == "__main__":
-    # Test database setup
-    asyncio.run(init_db())
-    print("Database setup complete!")
+    try:
+        # Use service client
+        response = supabase_service.table(TABLE_NAME).select("id", count="exact").eq("status", status).execute()
+        return response.count if hasattr(response, 'count') else 0
+    except Exception as e:
+        print(f"[ERROR] Failed to count submissions by status: {str(e)}")
+        return 0
