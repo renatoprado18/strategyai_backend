@@ -81,13 +81,36 @@ async def call_llm(
 
                 # Clean markdown code blocks if JSON expected
                 if response_format == "json":
-                    if content.startswith("```json"):
-                        content = content[7:]
-                    if content.startswith("```"):
-                        content = content[3:]
-                    if content.endswith("```"):
-                        content = content[:-3]
-                    content = content.strip()
+                    # Handle markdown code blocks
+                    if "```json" in content:
+                        # Extract content between ```json and ```
+                        start = content.find("```json") + 7
+                        end = content.find("```", start)
+                        if end != -1:
+                            content = content[start:end].strip()
+                    elif "```" in content:
+                        # Extract content between ``` and ```
+                        start = content.find("```") + 3
+                        end = content.find("```", start)
+                        if end != -1:
+                            content = content[start:end].strip()
+
+                    # Try to find JSON object if embedded in text
+                    if not content.startswith("{") and "{" in content:
+                        json_start = content.find("{")
+                        content = content[json_start:]
+
+                    # Find matching closing brace
+                    if content.startswith("{"):
+                        brace_count = 0
+                        for i, char in enumerate(content):
+                            if char == "{":
+                                brace_count += 1
+                            elif char == "}":
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    content = content[:i+1]
+                                    break
 
                 logger.info(f"[LLM] {model} responded ({len(content)} chars)")
                 return content
@@ -629,8 +652,29 @@ Create 3 scenarios:
         return strategic_analysis
     except json.JSONDecodeError as e:
         logger.error(f"[STAGE 3] JSON parse error: {e}")
-        logger.error(f"[STAGE 3] Response preview: {response[:500]}")
-        raise Exception(f"Stage 3 failed to parse JSON: {e}")
+        logger.error(f"[STAGE 3] Full response length: {len(response)}")
+        logger.error(f"[STAGE 3] Response first 1000 chars: {response[:1000]}")
+        logger.error(f"[STAGE 3] Response last 500 chars: {response[-500:]}")
+
+        # Try one more time with explicit JSON-only instruction
+        logger.warning("[STAGE 3] Retrying with stricter JSON-only prompt...")
+        retry_prompt = f"{prompt}\n\n**CRITICAL: Output ONLY valid JSON. No explanations, no markdown, no code blocks. Start with {{ and end with }}.**"
+        retry_response = await call_llm(
+            model=MODEL_STRATEGY,
+            prompt=retry_prompt,
+            system_prompt="Output JSON ONLY. No markdown. No explanations.",
+            temperature=0.5,  # Lower temperature
+            max_tokens=8000
+        )
+
+        try:
+            strategic_analysis = json.loads(retry_response)
+            logger.info(f"[STAGE 3] ✅ Retry successful! Generated strategic analysis")
+            return strategic_analysis
+        except json.JSONDecodeError as e2:
+            logger.error(f"[STAGE 3] Retry also failed: {e2}")
+            logger.error(f"[STAGE 3] Retry response preview: {retry_response[:1000]}")
+            raise Exception(f"Stage 3 failed to parse JSON after retry: {e}")
 
 
 # ============================================================================
