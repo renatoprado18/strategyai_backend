@@ -29,8 +29,9 @@ def build_enhanced_prompt(
     website: Optional[str],
     challenge: Optional[str],
     apify_data: Optional[Dict[str, Any]] = None,
+    perplexity_data: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """Build comprehensive 10XMentorAI-based strategic analysis prompt"""
+    """Build comprehensive 10XMentorAI-based strategic analysis prompt with Perplexity real-time research"""
 
     # Build enrichment context with ALL public data sources
     enrichment_context = ""
@@ -88,6 +89,44 @@ def build_enhanced_prompt(
             enrich = apify_data["company_enrichment"]
             if enrich.get('enriched_successfully'):
                 enrichment_context += f"**Dados Adicionais da Empresa:**\n{enrich.get('summary', 'N/A')}\n\n"
+
+    # Add PERPLEXITY REAL-TIME RESEARCH (LEGENDARY INTELLIGENCE!)
+    if perplexity_data and perplexity_data.get("research_completed"):
+        enrichment_context += "\n\n## 🚀 PESQUISA DE MERCADO EM TEMPO REAL (PERPLEXITY AI)\n\n"
+        enrichment_context += "**Nota:** Os dados abaixo foram coletados em tempo real da web com citações verificadas.\n\n"
+
+        # Competitor intelligence
+        if perplexity_data.get("competitors"):
+            comp_data = perplexity_data["competitors"]
+            enrichment_context += "### INTELIGÊNCIA COMPETITIVA (REAL-TIME)\n"
+            enrichment_context += f"{comp_data.get('competitor_analysis', 'N/A')}\n\n"
+
+        # Market sizing
+        if perplexity_data.get("market_sizing"):
+            market_data = perplexity_data["market_sizing"]
+            enrichment_context += "### DIMENSIONAMENTO DE MERCADO (TAM/SAM/SOM)\n"
+            enrichment_context += f"{market_data.get('market_sizing', 'N/A')}\n\n"
+
+        # Industry trends
+        if perplexity_data.get("industry_trends"):
+            trend_data = perplexity_data["industry_trends"]
+            enrichment_context += "### TENDÊNCIAS E INSIGHTS DO SETOR\n"
+            enrichment_context += f"{trend_data.get('trend_analysis', 'N/A')}\n\n"
+
+        # Company intelligence
+        if perplexity_data.get("company_intelligence"):
+            intel_data = perplexity_data["company_intelligence"]
+            enrichment_context += f"### INTELIGÊNCIA DA EMPRESA ({company})\n"
+            enrichment_context += f"{intel_data.get('company_intelligence', 'N/A')}\n\n"
+
+        # Solution strategies
+        if perplexity_data.get("solution_strategies"):
+            solution_data = perplexity_data["solution_strategies"]
+            enrichment_context += f"### ESTRATÉGIAS E MELHORES PRÁTICAS PARA: {challenge or 'Crescimento'}\n"
+            enrichment_context += f"{solution_data.get('solution_research', 'N/A')}\n\n"
+
+        enrichment_context += "**Fonte:** Perplexity Sonar Pro (Web em Tempo Real)\n"
+        enrichment_context += f"**Data da Pesquisa:** {perplexity_data.get('research_date', 'N/A')}\n\n"
 
     prompt = f"""# CONTEXTO E MISSÃO
 
@@ -443,17 +482,19 @@ async def generate_enhanced_analysis(
     website: Optional[str],
     challenge: Optional[str],
     apify_data: Optional[Dict[str, Any]] = None,
+    perplexity_data: Optional[Dict[str, Any]] = None,
     use_multi_model: bool = True,
 ) -> Dict[str, Any]:
     """
-    Generate premium consulting-grade analysis using enhanced prompts
+    Generate premium consulting-grade analysis using enhanced prompts with Perplexity real-time research
 
     Args:
         company: Company name
         industry: Industry sector
         website: Company website
         challenge: Business challenge
-        apify_data: Enriched market data
+        apify_data: Enriched market data from web scraping
+        perplexity_data: Real-time web research from Perplexity AI
         use_multi_model: Use multi-model orchestration (more expensive but better quality)
 
     Returns:
@@ -463,7 +504,7 @@ async def generate_enhanced_analysis(
     if not OPENROUTER_API_KEY:
         raise ValueError("OPENROUTER_API_KEY not set")
 
-    prompt = build_enhanced_prompt(company, industry, website, challenge, apify_data)
+    prompt = build_enhanced_prompt(company, industry, website, challenge, apify_data, perplexity_data)
 
     # Use GPT-4o for comprehensive strategic analysis (best balance of cost/quality)
     model = MODEL_STRATEGY

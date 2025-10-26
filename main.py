@@ -38,6 +38,7 @@ from analysis_enhanced import generate_enhanced_analysis, validate_enhanced_anal
 from auth import authenticate_user, get_current_user, RequireAuth
 from rate_limiter import check_rate_limit
 from apify_service import gather_all_apify_data
+from perplexity_service import comprehensive_market_research
 
 load_dotenv()
 
@@ -207,6 +208,58 @@ async def process_analysis_task(submission_id: int):
             data_quality["sources_failed"] = 8
             data_quality["failed_sources"] = ["all_sources_failed"]
 
+        # Step 1.5: PERPLEXITY DEEP RESEARCH (LEGENDARY UPGRADE!)
+        print(f"[PERPLEXITY] Starting comprehensive market research for {submission['company']}...")
+        perplexity_data = None
+        perplexity_success = False
+
+        try:
+            perplexity_data = await comprehensive_market_research(
+                company=submission["company"],
+                industry=submission["industry"],
+                challenge=submission.get("challenge", "Expandir mercado e aumentar receita"),
+                region="Brasil",
+                specific_segment=None
+            )
+
+            perplexity_success = perplexity_data.get("research_completed", False)
+
+            if perplexity_success:
+                print(f"[PERPLEXITY] ✅ Comprehensive research completed!")
+                print(f"[PERPLEXITY] Success Rate: {perplexity_data.get('success_rate', 'N/A')}")
+
+                # Add Perplexity as additional data sources to quality tracking
+                perplexity_sources = perplexity_data.get('success_rate', '0/5').split('/')[0]
+                data_quality["perplexity_sources"] = int(perplexity_sources)
+                data_quality["sources_succeeded"] += int(perplexity_sources)
+
+                # Update quality tier with Perplexity boost (now 8 Apify + 5 Perplexity = 13 total)
+                total_sources = 13
+                total_succeeded = data_quality["sources_succeeded"]
+                completion_rate = total_succeeded / total_sources
+
+                if completion_rate >= 0.75:  # 10-13 sources = 75-100%
+                    data_quality["quality_tier"] = "legendary"  # NEW TIER!
+                elif completion_rate >= 0.60:  # 8-9 sources = 60-74%
+                    data_quality["quality_tier"] = "full"
+                elif completion_rate >= 0.40:  # 5-7 sources = 40-59%
+                    data_quality["quality_tier"] = "good"
+                elif completion_rate >= 0.20:  # 3-4 sources = 20-39%
+                    data_quality["quality_tier"] = "partial"
+                else:  # 0-2 sources = 0-19%
+                    data_quality["quality_tier"] = "minimal"
+
+                data_quality["data_completeness"] = f"{int(completion_rate * 100)}%"
+
+                print(f"[PERPLEXITY] 🚀 UPGRADED Quality Tier: {data_quality['quality_tier'].upper()}")
+                print(f"[PERPLEXITY] Total Sources: {total_succeeded}/{total_sources} ({data_quality['data_completeness']})")
+            else:
+                print(f"[PERPLEXITY] ⚠️ Research partially completed or failed")
+
+        except Exception as e:
+            print(f"[WARNING] Perplexity research failed: {str(e)}. Continuing with Apify data only...")
+            perplexity_data = None
+
         # Step 2: Generate enhanced AI analysis with 10XMentorAI frameworks
         print(f"[AI] Generating premium strategic analysis for submission {submission_id}...")
         import time
@@ -218,6 +271,7 @@ async def process_analysis_task(submission_id: int):
             website=submission.get("website"),
             challenge=submission.get("challenge"),
             apify_data=apify_data,
+            perplexity_data=perplexity_data,  # LEGENDARY: Real-time web research
             use_multi_model=True,  # Enable multi-model orchestration
         )
 
@@ -241,7 +295,10 @@ async def process_analysis_task(submission_id: int):
             "framework_version": analysis.get("_metadata", {}).get("framework_version", "10XMentorAI v2.0"),
             "processing_time_seconds": round(processing_time, 2),
             "generated_at": datetime.utcnow().isoformat(),
-            "data_quality_tier": data_quality["quality_tier"]
+            "data_quality_tier": data_quality["quality_tier"],
+            # Store ALL scraped data for dashboard preview
+            "apify_data": apify_data,
+            "perplexity_research": perplexity_data if perplexity_success else None,
         }
 
         # Convert to JSON strings
