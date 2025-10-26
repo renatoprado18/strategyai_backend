@@ -180,3 +180,16 @@ class LoginResponse(BaseModel):
     success: bool
     data: Optional[TokenResponse] = None
     error: Optional[str] = None
+
+
+class SignupRequest(BaseModel):
+    """Signup request with email and password"""
+    email: EmailStr
+    password: str
+
+
+class SignupResponse(BaseModel):
+    """Signup response"""
+    success: bool
+    message: Optional[str] = None
+    error: Optional[str] = None

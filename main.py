@@ -24,6 +24,8 @@ from models import (
     LoginResponse,
     TokenResponse,
     UserResponse,
+    SignupRequest,
+    SignupResponse,
 )
 from database import (
     init_db,
@@ -191,6 +193,52 @@ async def login(credentials: LoginRequest):
         return LoginResponse(
             success=False,
             error="Authentication failed"
+        )
+
+
+@app.post("/api/auth/signup", response_model=SignupResponse)
+async def signup(credentials: SignupRequest):
+    """
+    User signup endpoint
+
+    Creates a new user in Supabase Auth. User will not have admin access until manually granted in Supabase dashboard.
+    """
+    try:
+        from supabase_client import get_supabase_client
+
+        supabase = get_supabase_client(use_service_key=False)
+
+        # Create user in Supabase Auth
+        response = supabase.auth.sign_up({
+            "email": credentials.email,
+            "password": credentials.password
+        })
+
+        if response.user:
+            return SignupResponse(
+                success=True,
+                message="Conta criada com sucesso! Você pode fazer login agora. Nota: Acesso administrativo será concedido manualmente."
+            )
+        else:
+            return SignupResponse(
+                success=False,
+                error="Falha ao criar conta. Por favor, tente novamente."
+            )
+
+    except Exception as e:
+        error_message = str(e)
+        print(f"[ERROR] Signup error: {error_message}")
+
+        # Check for common errors
+        if "already registered" in error_message.lower() or "already exists" in error_message.lower():
+            return SignupResponse(
+                success=False,
+                error="Este email já está registrado. Faça login ou use outro email."
+            )
+
+        return SignupResponse(
+            success=False,
+            error="Erro ao criar conta. Por favor, tente novamente."
         )
 
 
