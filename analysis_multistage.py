@@ -1144,11 +1144,17 @@ async def generate_multistage_analysis(
                 risk_priority = {}
 
         # ===== STAGE 6: Executive polish (CHEAP - Claude Haiku) =====
-        final_analysis = await stage6_executive_polish(
-            company, strategic_analysis
-        )
-        stages_completed.append("executive_polish")
-        models_used["stage6_polish"] = MODEL_POLISH
+        try:
+            final_analysis = await stage6_executive_polish(
+                company, strategic_analysis
+            )
+            stages_completed.append("executive_polish")
+            models_used["stage6_polish"] = MODEL_POLISH
+        except Exception as e:
+            logger.warning(f"[MULTISTAGE] Stage 6 failed (non-critical): {str(e)}")
+            # Use unpolished analysis if polish fails
+            final_analysis = strategic_analysis
+            logger.info("[MULTISTAGE] Using unpolished strategic analysis as fallback")
 
         # ===== MERGE ADVANCED ANALYSIS =====
         # Add competitive intel, risk analysis, and follow-up research to final output

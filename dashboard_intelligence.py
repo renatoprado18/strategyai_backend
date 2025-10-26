@@ -21,12 +21,12 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # FREE models for dashboard intelligence
-MODEL_FREE_DEEPSEEK = "deepseek-ai/deepseek-llm-r1"  # FREE - Good reasoning
-MODEL_FREE_LLAMA = "meta-llama/llama-4-scout:free"  # FREE - Fast, reliable
-MODEL_FREE_QWEN = "qwen/qwen-2.5"  # FREE/Cheap - Multilingual
+MODEL_FREE_DEEPSEEK = "deepseek/deepseek-r1:free"  # FREE - Good reasoning
+MODEL_FREE_GEMINI = "google/gemini-2.0-flash-exp:free"  # FREE - Fast, reliable
+MODEL_FREE_QWEN = "qwen/qwen-2.5-72b-instruct:free"  # FREE - Multilingual
 
-# Use DeepSeek R1 as default (best free model for reasoning)
-DEFAULT_MODEL = MODEL_FREE_DEEPSEEK
+# Use Gemini Flash as default (most reliable free model)
+DEFAULT_MODEL = MODEL_FREE_GEMINI
 
 TIMEOUT = 60.0  # Shorter timeout for dashboard queries
 
@@ -91,6 +91,19 @@ async def call_free_llm(
             else:
                 raise Exception(f"Unexpected API response: {data}")
 
+    except httpx.HTTPStatusError as e:
+        logger.error(f"[DASHBOARD AI] Call failed: {str(e)}")
+
+        # Try fallback model if primary fails
+        if model == MODEL_FREE_GEMINI:
+            logger.warning("[DASHBOARD AI] Gemini failed, trying DeepSeek R1...")
+            return await call_free_llm(prompt, model=MODEL_FREE_DEEPSEEK, temperature=temperature, max_tokens=max_tokens)
+        elif model == MODEL_FREE_DEEPSEEK:
+            logger.warning("[DASHBOARD AI] DeepSeek failed, trying Qwen...")
+            return await call_free_llm(prompt, model=MODEL_FREE_QWEN, temperature=temperature, max_tokens=max_tokens)
+        else:
+            # All fallbacks exhausted
+            raise
     except Exception as e:
         logger.error(f"[DASHBOARD AI] Call failed: {str(e)}")
         raise
