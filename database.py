@@ -123,8 +123,10 @@ async def update_submission_status(
     status: str,
     report_json: Optional[str] = None,
     error_message: Optional[str] = None,
+    data_quality_json: Optional[str] = None,
+    processing_metadata: Optional[str] = None,
 ):
-    """Update submission status and report"""
+    """Update submission status, report, and quality metadata"""
     try:
         data = {
             "status": status,
@@ -136,6 +138,12 @@ async def update_submission_status(
 
         if error_message is not None:
             data["error_message"] = error_message
+
+        if data_quality_json is not None:
+            data["data_quality_json"] = data_quality_json
+
+        if processing_metadata is not None:
+            data["processing_metadata"] = processing_metadata
 
         # Use service client to bypass RLS
         response = supabase_service.table(TABLE_NAME).update(data).eq("id", submission_id).execute()

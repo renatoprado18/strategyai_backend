@@ -93,6 +93,17 @@ async def process_analysis_task(submission_id: int):
         # Step 1: Gather Apify data (web scraping, competitor research, trends)
         print(f"[APIFY] Gathering enrichment data for {submission['company']}...")
         apify_data = None
+        data_quality = {
+            "website_scraped": False,
+            "competitors_found": 0,
+            "trends_researched": False,
+            "company_enriched": False,
+            "sources_succeeded": 0,
+            "sources_failed": 0,
+            "failed_sources": [],
+            "quality_tier": "minimal"
+        }
+
         try:
             apify_data = await gather_all_apify_data(
                 company=submission["company"],
@@ -101,12 +112,57 @@ async def process_analysis_task(submission_id: int):
                 challenge=submission.get("challenge"),
             )
             print(f"[APIFY] Data gathering completed for submission {submission_id}")
+
+            # Extract data quality metrics
+            if apify_data:
+                data_quality["website_scraped"] = apify_data.get("website_data", {}).get("scraped_successfully", False)
+                data_quality["competitors_found"] = apify_data.get("competitor_data", {}).get("competitors_found", 0)
+                data_quality["trends_researched"] = apify_data.get("industry_trends", {}).get("researched_successfully", False)
+                data_quality["company_enriched"] = apify_data.get("company_enrichment", {}).get("enriched_successfully", False)
+
+                # Count successes
+                successes = sum([
+                    data_quality["website_scraped"],
+                    data_quality["competitors_found"] > 0,
+                    data_quality["trends_researched"],
+                    data_quality["company_enriched"]
+                ])
+                data_quality["sources_succeeded"] = successes
+                data_quality["sources_failed"] = 4 - successes
+
+                # Track failed sources
+                if not data_quality["website_scraped"] and submission.get("website"):
+                    data_quality["failed_sources"].append("website_scraping")
+                if data_quality["competitors_found"] == 0:
+                    data_quality["failed_sources"].append("competitor_research")
+                if not data_quality["trends_researched"]:
+                    data_quality["failed_sources"].append("industry_trends")
+                if not data_quality["company_enriched"]:
+                    data_quality["failed_sources"].append("company_enrichment")
+
+                # Calculate quality tier
+                if successes >= 4:
+                    data_quality["quality_tier"] = "full"
+                elif successes == 3:
+                    data_quality["quality_tier"] = "good"
+                elif successes == 2:
+                    data_quality["quality_tier"] = "partial"
+                else:
+                    data_quality["quality_tier"] = "minimal"
+
+                data_quality["data_completeness"] = f"{int((successes / 4) * 100)}%"
+
         except Exception as e:
             print(f"[WARNING] Apify enrichment failed: {str(e)}. Continuing with basic analysis...")
             apify_data = None
+            data_quality["sources_failed"] = 4
+            data_quality["failed_sources"] = ["all_sources_failed"]
 
         # Step 2: Generate enhanced AI analysis with 10XMentorAI frameworks
         print(f"[AI] Generating premium strategic analysis for submission {submission_id}...")
+        import time
+        start_time = time.time()
+
         analysis = await generate_enhanced_analysis(
             company=submission["company"],
             industry=submission["industry"],
@@ -116,18 +172,41 @@ async def process_analysis_task(submission_id: int):
             use_multi_model=True,  # Enable multi-model orchestration
         )
 
+        processing_time = time.time() - start_time
+
         # Validate structure
         if not await validate_enhanced_analysis(analysis):
             raise Exception("Enhanced analysis validation failed - invalid structure")
 
-        # Convert to JSON string
+        # Add data disclaimer to metadata if data is incomplete
+        if data_quality["quality_tier"] in ["partial", "minimal"]:
+            disclaimer = f"Este relatório foi gerado com {data_quality['data_completeness']} dos dados disponíveis. "
+            if data_quality["failed_sources"]:
+                disclaimer += f"Fontes indisponíveis: {', '.join(data_quality['failed_sources'])}. "
+            disclaimer += "A análise foi feita com base nas informações públicas disponíveis."
+            analysis["_metadata"]["data_disclaimer"] = disclaimer
+
+        # Extract processing metadata
+        processing_meta = {
+            "model": analysis.get("_metadata", {}).get("model_used", "gpt-4o"),
+            "framework_version": analysis.get("_metadata", {}).get("framework_version", "10XMentorAI v2.0"),
+            "processing_time_seconds": round(processing_time, 2),
+            "generated_at": datetime.utcnow().isoformat(),
+            "data_quality_tier": data_quality["quality_tier"]
+        }
+
+        # Convert to JSON strings
         report_json = json.dumps(analysis, ensure_ascii=False)
+        data_quality_json = json.dumps(data_quality, ensure_ascii=False)
+        processing_metadata_json = json.dumps(processing_meta, ensure_ascii=False)
 
         # Update submission with success
         await update_submission_status(
             submission_id=submission_id,
             status="completed",
             report_json=report_json,
+            data_quality_json=data_quality_json,
+            processing_metadata=processing_metadata_json,
         )
 
         print(f"[OK] Analysis completed for submission {submission_id}")

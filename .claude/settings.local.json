@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/pradord/Documents/Projects/rfap_landing/components/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
