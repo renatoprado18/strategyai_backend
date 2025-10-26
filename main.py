@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from typing import Dict, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from dotenv import load_dotenv
@@ -634,9 +634,9 @@ async def get_dashboard_intelligence(
         # Get all submissions
         all_submissions = await get_all_submissions()
 
-        # Filter by date range
-        current_cutoff = datetime.now() - timedelta(days=days)
-        previous_cutoff = datetime.now() - timedelta(days=days * 2)
+        # Filter by date range (timezone-aware)
+        current_cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        previous_cutoff = datetime.now(timezone.utc) - timedelta(days=days * 2)
 
         current_submissions = [
             s for s in all_submissions
