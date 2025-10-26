@@ -6,10 +6,45 @@ Uses Perplexity's Sonar models for real-time web research with citations
 import os
 import httpx
 import logging
+import re
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+
+def sanitize_research_data(data: str, max_length: int = 3000) -> str:
+    """
+    Sanitize Perplexity research data to prevent content filter triggers
+
+    Args:
+        data: Raw research text from Perplexity
+        max_length: Maximum character length
+
+    Returns:
+        Cleaned, truncated text safe for AI prompts
+    """
+    if not data:
+        return ""
+
+    # Remove URLs (major spam trigger)
+    data = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '[URL]', data)
+
+    # Remove email addresses
+    data = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '[EMAIL]', data)
+
+    # Remove excessive special characters
+    data = re.sub(r'[^\w\s\.,!?;:()\-\'\"%\$€£¥R]', '', data)
+
+    # Remove multiple consecutive spaces/newlines
+    data = re.sub(r'\s+', ' ', data)
+    data = re.sub(r'\n+', '\n', data)
+
+    # Truncate if too long (with ellipsis)
+    if len(data) > max_length:
+        data = data[:max_length] + "... [truncated for brevity]"
+
+    return data.strip()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -78,7 +113,12 @@ async def call_perplexity(
                 result = response.json()
                 content = result["choices"][0]["message"]["content"]
                 logger.info(f"[PERPLEXITY] Research completed successfully ({len(content)} chars)")
-                return content
+
+                # Sanitize to prevent content filter triggers
+                sanitized = sanitize_research_data(content, max_length=3000)
+                logger.info(f"[PERPLEXITY] Sanitized: {len(content)} → {len(sanitized)} chars")
+
+                return sanitized
             else:
                 logger.error(f"[PERPLEXITY] API error: {response.status_code} - {response.text}")
 

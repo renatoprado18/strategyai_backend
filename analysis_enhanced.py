@@ -131,6 +131,12 @@ def build_enhanced_prompt(
         enrichment_context += "**Fonte:** Perplexity Sonar Pro (Web em Tempo Real)\n"
         enrichment_context += f"**Data da Pesquisa:** {perplexity_data.get('research_date', 'N/A')}\n\n"
 
+    # Ensure enrichment context isn't too long (prevent token overflow)
+    MAX_ENRICHMENT_LENGTH = 15000  # characters
+    if len(enrichment_context) > MAX_ENRICHMENT_LENGTH:
+        logger.warning(f"[PROMPT] Enrichment context too long ({len(enrichment_context)} chars), truncating to {MAX_ENRICHMENT_LENGTH}")
+        enrichment_context = enrichment_context[:MAX_ENRICHMENT_LENGTH] + "\n\n[...dados adicionais omitidos para otimização...]"
+
     prompt = f"""# CONTEXTO E MISSÃO
 
 Você é um consultor estratégico sênior da McKinsey com 15+ anos de experiência. Você está preparando uma análise estratégica executiva de nível premium (equivalente a relatórios de US$ 50.000+) para o cliente abaixo.
@@ -509,8 +515,15 @@ async def generate_enhanced_analysis(
 
     prompt = build_enhanced_prompt(company, industry, website, challenge, apify_data, perplexity_data)
 
-    # Use GPT-4o for comprehensive strategic analysis (best balance of cost/quality)
-    model = MODEL_STRATEGY
+    # Choose model based on data complexity
+    # Claude 3.5 Sonnet handles long context and Perplexity data better (less content filtering)
+    # GPT-4o is better for structured frameworks when no external research
+    if perplexity_data and perplexity_data.get("research_completed"):
+        model = MODEL_RESEARCH  # Claude 3.5 Sonnet - better for research-heavy prompts
+        logger.info(f"[AI] Using Claude 3.5 Sonnet (better for Perplexity data)")
+    else:
+        model = MODEL_STRATEGY  # GPT-4o - better for pure strategic frameworks
+        logger.info(f"[AI] Using GPT-4o (optimized for frameworks)")
 
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
