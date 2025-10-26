@@ -281,6 +281,35 @@ async def process_analysis_task(submission_id: int):
         if not await validate_enhanced_analysis(analysis):
             raise Exception("Enhanced analysis validation failed - invalid structure")
 
+        # CRITICAL FIX: Recalculate quality if Perplexity was removed during fallback
+        used_perplexity = analysis.get("_metadata", {}).get("used_perplexity", True)
+        if perplexity_data and not used_perplexity:
+            # AI fallback happened - Perplexity data was NOT used in final report
+            print(f"[DATA QUALITY] Recalculating quality tier (Perplexity removed in fallback)")
+
+            # Remove Perplexity sources from count
+            perplexity_sources = data_quality.get("perplexity_sources", 5)
+            data_quality["sources_succeeded"] -= perplexity_sources
+            data_quality["perplexity_sources"] = 0
+
+            # Recalculate with only Apify (8 sources total)
+            total_sources = 8
+            total_succeeded = data_quality["sources_succeeded"]
+            completion_rate = total_succeeded / total_sources
+
+            if completion_rate >= 0.75:  # 6-8 sources = 75-100%
+                data_quality["quality_tier"] = "full"
+            elif completion_rate >= 0.5:  # 4-5 sources = 50-74%
+                data_quality["quality_tier"] = "good"
+            elif completion_rate >= 0.25:  # 2-3 sources = 25-49%
+                data_quality["quality_tier"] = "partial"
+            else:  # 0-1 sources = 0-24%
+                data_quality["quality_tier"] = "minimal"
+
+            data_quality["data_completeness"] = f"{int(completion_rate * 100)}%"
+
+            print(f"[DATA QUALITY] ✅ Recalculated: {total_succeeded}/{total_sources} sources = {data_quality['quality_tier'].upper()} ({data_quality['data_completeness']})")
+
         # Add data disclaimer to metadata if data is incomplete
         if data_quality["quality_tier"] in ["partial", "minimal"]:
             disclaimer = f"Este relatório foi gerado com {data_quality['data_completeness']} dos dados disponíveis. "
@@ -306,13 +335,14 @@ async def process_analysis_task(submission_id: int):
         data_quality_json = json.dumps(data_quality, ensure_ascii=False)
         processing_metadata_json = json.dumps(processing_meta, ensure_ascii=False)
 
-        # Update submission with success
+        # Update submission with success (clear any previous errors)
         await update_submission_status(
             submission_id=submission_id,
             status="completed",
             report_json=report_json,
             data_quality_json=data_quality_json,
             processing_metadata=processing_metadata_json,
+            error_message=None,  # CRITICAL: Clear error from failed first attempt
         )
 
         print(f"[OK] Analysis completed for submission {submission_id}")

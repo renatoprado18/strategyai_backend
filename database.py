@@ -126,7 +126,7 @@ async def update_submission_status(
     submission_id: int,
     status: str,
     report_json: Optional[str] = None,
-    error_message: Optional[str] = None,
+    error_message: Optional[str] = ...,  # Use ellipsis as sentinel
     data_quality_json: Optional[str] = None,
     processing_metadata: Optional[str] = None,
 ):
@@ -140,7 +140,8 @@ async def update_submission_status(
         if report_json is not None:
             data["report_json"] = report_json
 
-        if error_message is not None:
+        # Handle error_message: if explicitly passed (even as None), update it
+        if error_message is not ...:
             data["error_message"] = error_message
 
         if data_quality_json is not None:
