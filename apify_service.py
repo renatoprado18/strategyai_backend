@@ -124,7 +124,7 @@ async def research_competitors(company: str, industry: str) -> Dict[str, Any]:
         print(f"[APIFY] Searching competitors with query: {search_query}")
 
         run_input = {
-            "queries": [search_query],
+            "queries": search_query,
             "maxPagesPerQuery": 3,
             "resultsPerPage": 10,
             "countryCode": "br",
@@ -200,7 +200,7 @@ async def research_industry_trends(industry: str) -> Dict[str, Any]:
 
         for query in search_queries:
             run_input = {
-                "queries": [query],
+                "queries": query,
                 "maxPagesPerQuery": 2,
                 "resultsPerPage": 5,
                 "countryCode": "br",
@@ -263,7 +263,7 @@ async def enrich_company_data(company: str, website: Optional[str] = None) -> Di
             search_query += f" site:{website}"
 
         run_input = {
-            "queries": [search_query],
+            "queries": search_query,
             "maxPagesPerQuery": 2,
             "resultsPerPage": 10,
             "countryCode": "br",
@@ -328,7 +328,7 @@ async def scrape_linkedin_company(linkedin_url: Optional[str], company_name: str
             search_query = f'site:linkedin.com/company "{company_name}"'
 
         run_input = {
-            "queries": [search_query],
+            "queries": search_query,
             "maxPagesPerQuery": 1,
             "resultsPerPage": 5,
             "countryCode": "br",
@@ -392,7 +392,7 @@ async def scrape_linkedin_founder(linkedin_url: Optional[str], founder_name: Opt
             search_query = f'site:linkedin.com/in "{founder_name}" CEO founder'
 
         run_input = {
-            "queries": [search_query],
+            "queries": search_query,
             "maxPagesPerQuery": 1,
             "resultsPerPage": 5,
             "countryCode": "br",
