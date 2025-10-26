@@ -54,7 +54,7 @@ async def call_free_llm(
         "messages": [
             {
                 "role": "system",
-                "content": "You are an executive dashboard analyst. Provide concise, actionable insights from data. Always output valid JSON when requested."
+                "content": "You are an executive dashboard analyst. Provide concise, actionable insights from data in BRAZILIAN PORTUGUESE (pt-BR). Always output valid JSON when requested. All text must be in Portuguese."
             },
             {
                 "role": "user",
@@ -165,17 +165,18 @@ async def generate_executive_summary(
     if len(submissions) > 0:
         summary_data["avg_sources"] = summary_data["avg_sources"] / len(submissions)
 
-    prompt = f"""Analyze this data and create a concise executive summary (3-4 sentences):
+    prompt = f"""Analise estes dados e crie um resumo executivo conciso (3-4 frases) em PORTUGUÊS BRASILEIRO:
 
 {json.dumps(summary_data, indent=2, ensure_ascii=False)}
 
-Focus on:
-1. Overall quality trend (is it improving?)
-2. Most common industries and challenges
-3. Any notable patterns or concerns
-4. One actionable recommendation
+Foque em:
+1. Tendência geral de qualidade (está melhorando?)
+2. Indústrias e desafios mais comuns
+3. Padrões ou preocupações notáveis
+4. Uma recomendação acionável
 
-Return plain text (not JSON). Be direct and executive-friendly.
+Retorne texto simples (não JSON). Seja direto e adequado para executivos.
+**IMPORTANTE: Todo o texto deve estar em português brasileiro.**
 """
 
     summary = await call_free_llm(prompt, temperature=0.3, max_tokens=500)
@@ -222,34 +223,34 @@ async def identify_quality_trends(
         for tier, count in previous_stats.items() if tier != "total"
     }
 
-    prompt = f"""Analyze quality trends and provide insights:
+    prompt = f"""Analise as tendências de qualidade e forneça insights em PORTUGUÊS BRASILEIRO:
 
-Current Period: {json.dumps(current_stats, indent=2)}
-Current %: {json.dumps(current_pct, indent=2)}
+Período Atual: {json.dumps(current_stats, indent=2)}
+% Atual: {json.dumps(current_pct, indent=2)}
 
-Previous Period: {json.dumps(previous_stats, indent=2)}
-Previous %: {json.dumps(previous_pct, indent=2)}
+Período Anterior: {json.dumps(previous_stats, indent=2)}
+% Anterior: {json.dumps(previous_pct, indent=2)}
 
-Return JSON with this structure:
+Retorne JSON com esta estrutura (TODO EM PORTUGUÊS):
 
 {{
-  "trend_direction": "IMPROVING / STABLE / DECLINING",
+  "trend_direction": "MELHORANDO / ESTÁVEL / DECLINANDO",
   "key_insights": [
-    "Insight 1 (with specific % change)",
+    "Insight 1 (com % específica de mudança)",
     "Insight 2",
     "Insight 3"
   ],
   "root_causes": [
-    "Possible cause 1",
-    "Possible cause 2"
+    "Possível causa 1",
+    "Possível causa 2"
   ],
   "recommendations": [
-    "Action 1 to improve quality",
-    "Action 2"
+    "Ação 1 para melhorar qualidade",
+    "Ação 2"
   ]
 }}
 
-Be specific with numbers and percentages.
+Seja específico com números e percentagens. **TODO EM PORTUGUÊS BRASILEIRO.**
 """
 
     response = await call_free_llm(prompt, temperature=0.3, max_tokens=1000)
@@ -294,25 +295,25 @@ async def identify_common_challenges(
     if len(challenges) == 0:
         return {"common_challenges": [], "message": "No challenges to analyze"}
 
-    prompt = f"""Analyze these business challenges and group them into common themes:
+    prompt = f"""Analise estes desafios de negócio e agrupe-os em temas comuns (EM PORTUGUÊS BRASILEIRO):
 
 {json.dumps(challenges[:50], indent=2, ensure_ascii=False)}  # Limit to 50 for token efficiency
 
-Return JSON with this structure:
+Retorne JSON com esta estrutura (TODO EM PORTUGUÊS):
 
 {{
   "common_challenges": [
     {{
-      "theme": "Challenge theme (e.g., 'Customer Acquisition')",
+      "theme": "Tema do desafio (ex: 'Aquisição de Clientes')",
       "frequency": 10,
       "industries": ["Tecnologia", "Saúde"],
-      "examples": ["Example challenge 1", "Example challenge 2"],
-      "recommended_solution": "1-2 sentence actionable recommendation"
+      "examples": ["Exemplo de desafio 1", "Exemplo de desafio 2"],
+      "recommended_solution": "Recomendação acionável de 1-2 frases"
     }}
   ]
 }}
 
-Group into top {top_n} themes. Be specific and actionable.
+Agrupe nos top {top_n} temas. Seja específico e acionável. **TODO EM PORTUGUÊS BRASILEIRO.**
 """
 
     response = await call_free_llm(prompt, temperature=0.4, max_tokens=1500)
@@ -365,31 +366,31 @@ async def identify_high_risk_submissions(
             "created_at": sub.get("created_at")
         })
 
-    prompt = f"""Identify high-risk submissions requiring urgent follow-up:
+    prompt = f"""Identifique submissões de alto risco que requerem acompanhamento urgente (EM PORTUGUÊS BRASILEIRO):
 
 {json.dumps(risk_data, indent=2, ensure_ascii=False)}
 
-Risk indicators:
-- Low quality tier (partial, minimal)
-- Few sources succeeded (<5)
-- Errors during processing
-- Challenges indicating urgent business problems
+Indicadores de risco:
+- Tier de qualidade baixo (partial, minimal)
+- Poucas fontes bem-sucedidas (<5)
+- Erros durante processamento
+- Desafios indicando problemas urgentes de negócio
 
-Return JSON:
+Retorne JSON (TODO EM PORTUGUÊS):
 
 {{
   "high_risk_submissions": [
     {{
       "id": 123,
-      "company": "Company Name",
-      "risk_level": "HIGH / MEDIUM",
-      "risk_factors": ["Factor 1", "Factor 2"],
-      "recommended_action": "Specific action to take"
+      "company": "Nome da Empresa",
+      "risk_level": "ALTO / MÉDIO",
+      "risk_factors": ["Fator 1", "Fator 2"],
+      "recommended_action": "Ação específica a tomar"
     }}
   ]
 }}
 
-Only flag truly high-risk cases (not just low quality).
+Marque apenas casos verdadeiramente de alto risco (não apenas baixa qualidade). **TODO EM PORTUGUÊS.**
 """
 
     response = await call_free_llm(prompt, temperature=0.3, max_tokens=1500)
@@ -442,26 +443,26 @@ async def generate_system_improvement_recommendations(
         if sub.get("status") == "failed":
             failure_patterns["total_errors"] += 1
 
-    prompt = f"""Based on failure patterns and quality trends, recommend system improvements:
+    prompt = f"""Com base em padrões de falha e tendências de qualidade, recomende melhorias no sistema (EM PORTUGUÊS BRASILEIRO):
 
-Failure Patterns:
+Padrões de Falha:
 {json.dumps(failure_patterns, indent=2)}
 
-Quality Trends:
+Tendências de Qualidade:
 {json.dumps(quality_trends, indent=2)}
 
-Return JSON:
+Retorne JSON (TODO EM PORTUGUÊS):
 
 {{
   "improvement_recommendations": [
-    "Specific improvement 1 with expected impact",
-    "Specific improvement 2",
+    "Melhoria específica 1 com impacto esperado",
+    "Melhoria específica 2",
     "..."
   ],
   "priority_order": [1, 2, 3]
 }}
 
-Focus on high-ROI improvements (low effort, high impact).
+Foque em melhorias de alto ROI (baixo esforço, alto impacto). **TODO EM PORTUGUÊS BRASILEIRO.**
 """
 
     response = await call_free_llm(prompt, temperature=0.4, max_tokens=1000)
