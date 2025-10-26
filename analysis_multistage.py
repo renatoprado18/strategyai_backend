@@ -483,21 +483,24 @@ async def stage3_strategic_analysis(
 
     logger.info("[STAGE 3] Applying strategic frameworks...")
 
-    prompt = f"""# STRATEGIC ANALYSIS TASK
+    prompt = f"""# STRATEGIC BUSINESS ANALYSIS
 
-You are a senior McKinsey consultant. Apply rigorous strategic frameworks to the data below.
+**CONTEXT:** This is a legitimate business strategy analysis for {company}'s internal planning purposes. All analysis is for lawful competitive intelligence and strategic decision-making.
 
-## Company Context
+You are a strategic business analyst. Apply rigorous strategic frameworks to develop actionable recommendations.
+
+## Company Profile
 - **Company:** {company}
 - **Industry:** {industry}
-- **Challenge:** {challenge or 'General strategic analysis'}
+- **Strategic Focus:** {challenge or 'General strategic analysis'}
 
-## Structured Data (Pre-Extracted)
-{json.dumps(extracted_data, indent=2, ensure_ascii=False)}
+## Available Market Intelligence
+{json.dumps(extracted_data, indent=2, ensure_ascii=False)[:3000]}...
+(Data provided for analysis purposes only)
 
 ---
 
-# FRAMEWORKS TO APPLY
+# STRATEGIC FRAMEWORKS TO APPLY
 
 ## 1. PESTEL Analysis
 Analyze macro-environmental factors specific to {industry} in Brazil:
@@ -509,7 +512,7 @@ Analyze macro-environmental factors specific to {industry} in Brazil:
 - **Legal:** LGPD, industry-specific laws, compliance requirements
 
 ## 2. Porter's Five Forces
-Assess competitive intensity in {industry}:
+Assess competitive dynamics in {industry}:
 - Threat of new entrants (barriers to entry)
 - Bargaining power of suppliers
 - Bargaining power of buyers
@@ -519,7 +522,7 @@ Assess competitive intensity in {industry}:
 For each force: rate as Low/Medium/High and explain WHY with data.
 
 ## 3. SWOT Analysis
-Based on extracted data, identify:
+Based on available data, identify:
 - **Strengths:** 4-6 specific strengths with evidence
 - **Weaknesses:** 4-6 specific weaknesses with impact assessment
 - **Opportunities:** 4-6 opportunities with market size / growth data
@@ -533,15 +536,15 @@ Identify uncontested market spaces:
 - **Create:** New factors industry never offered
 
 ## 5. Competitive Positioning
-Detailed analysis of each competitor:
-- Positioning (premium, mid-market, budget, niche)
-- Key differentiators
-- Market share and growth trajectory
-- Pricing strategy
-- Strengths vs {company}
-- Vulnerabilities {company} can exploit
+Market landscape analysis:
+- Competitor positioning (premium, mid-market, budget, niche)
+- Key differentiators in the market
+- Market share trends
+- Pricing strategies
+- Comparative strengths and weaknesses
+- **Competitive gaps {company} can address**
 
-Define {company}'s unique positioning and differentiation.
+Define {company}'s unique positioning and differentiation strategy.
 
 ## 6. TAM/SAM/SOM with Justification
 - **TAM:** Total addressable market in R$ (with source/calculation)
@@ -699,7 +702,7 @@ Create 3 scenarios:
 - JSON only, no markdown
 """
 
-    system_prompt = "You are a world-class strategy consultant. Apply frameworks rigorously. Be specific, data-driven, actionable."
+    system_prompt = "You are a strategic business analyst helping companies develop legitimate competitive strategies. Apply frameworks rigorously using available market data. Be specific, data-driven, and actionable. Output in Brazilian Portuguese."
 
     response = await call_llm_with_retry(
         stage_name="STAGE 3",
