@@ -429,48 +429,40 @@ Focus on high-impact gaps (competitor data, market sizing, financial metrics).
     )
 
     gap_analysis = json.loads(response)
-        follow_up_queries = gap_analysis.get("follow_up_queries", [])[:3]  # Max 3 queries
+    follow_up_queries = gap_analysis.get("follow_up_queries", [])[:3]  # Max 3 queries
 
-        if len(follow_up_queries) == 0:
-            return {
-                "follow_up_completed": False,
-                "follow_up_research": {},
-                "data_gaps_filled": 0
-            }
-
-        # Run follow-up research with Perplexity
-        logger.info(f"[STAGE 2] Running {len(follow_up_queries)} follow-up research queries...")
-
-        follow_up_results = {}
-        for i, query in enumerate(follow_up_queries):
-            try:
-                result = await perplexity_service.call_perplexity(query, max_tokens=3000)
-                if result:
-                    follow_up_results[f"followup_{i+1}"] = {
-                        "query": query,
-                        "research": result
-                    }
-                    logger.info(f"[STAGE 2] ✅ Follow-up {i+1} completed")
-            except Exception as e:
-                logger.warning(f"[STAGE 2] Follow-up {i+1} failed: {str(e)}")
-                continue
-
-        logger.info(f"[STAGE 2] ✅ Completed {len(follow_up_results)}/{len(follow_up_queries)} follow-up queries")
-
-        return {
-            "follow_up_completed": True,
-            "follow_up_research": follow_up_results,
-            "data_gaps_filled": len(follow_up_results),
-            "priority_gaps": gap_analysis.get("priority_gaps", [])
-        }
-
-    except json.JSONDecodeError as e:
-        logger.error(f"[STAGE 2] JSON parse error: {e}")
+    if len(follow_up_queries) == 0:
         return {
             "follow_up_completed": False,
             "follow_up_research": {},
             "data_gaps_filled": 0
         }
+
+    # Run follow-up research with Perplexity
+    logger.info(f"[STAGE 2] Running {len(follow_up_queries)} follow-up research queries...")
+
+    follow_up_results = {}
+    for i, query in enumerate(follow_up_queries):
+        try:
+            result = await perplexity_service.call_perplexity(query, max_tokens=3000)
+            if result:
+                follow_up_results[f"followup_{i+1}"] = {
+                    "query": query,
+                    "research": result
+                }
+                logger.info(f"[STAGE 2] ✅ Follow-up {i+1} completed")
+        except Exception as e:
+            logger.warning(f"[STAGE 2] Follow-up {i+1} failed: {str(e)}")
+            continue
+
+    logger.info(f"[STAGE 2] ✅ Completed {len(follow_up_results)}/{len(follow_up_queries)} follow-up queries")
+
+    return {
+        "follow_up_completed": True,
+        "follow_up_research": follow_up_results,
+        "data_gaps_filled": len(follow_up_results),
+        "priority_gaps": gap_analysis.get("priority_gaps", [])
+    }
 
 
 # ============================================================================
