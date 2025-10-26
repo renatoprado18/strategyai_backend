@@ -34,7 +34,7 @@ from database import (
     get_all_submissions,
     update_submission_status,
 )
-from analysis import generate_analysis, validate_analysis_structure
+from analysis_enhanced import generate_enhanced_analysis, validate_enhanced_analysis
 from auth import authenticate_user, get_current_user, RequireAuth
 from rate_limiter import check_rate_limit
 from apify_service import gather_all_apify_data
@@ -105,19 +105,20 @@ async def process_analysis_task(submission_id: int):
             print(f"[WARNING] Apify enrichment failed: {str(e)}. Continuing with basic analysis...")
             apify_data = None
 
-        # Step 2: Generate AI analysis (with or without Apify data)
-        print(f"[AI] Generating strategic analysis for submission {submission_id}...")
-        analysis = await generate_analysis(
+        # Step 2: Generate enhanced AI analysis with 10XMentorAI frameworks
+        print(f"[AI] Generating premium strategic analysis for submission {submission_id}...")
+        analysis = await generate_enhanced_analysis(
             company=submission["company"],
             industry=submission["industry"],
             website=submission.get("website"),
             challenge=submission.get("challenge"),
             apify_data=apify_data,
+            use_multi_model=True,  # Enable multi-model orchestration
         )
 
         # Validate structure
-        if not await validate_analysis_structure(analysis):
-            raise Exception("Analysis validation failed - invalid structure")
+        if not await validate_enhanced_analysis(analysis):
+            raise Exception("Enhanced analysis validation failed - invalid structure")
 
         # Convert to JSON string
         report_json = json.dumps(analysis, ensure_ascii=False)
