@@ -244,6 +244,21 @@ async def signup(credentials: SignupRequest):
 
 # Public Endpoints
 
+def normalize_website_url(url: str) -> str:
+    """Ensure website URL has https:// prefix"""
+    if not url:
+        return url
+
+    url = url.strip()
+
+    # If URL already has a protocol, return as-is
+    if url.startswith('http://') or url.startswith('https://'):
+        return url
+
+    # Add https:// prefix
+    return f'https://{url}'
+
+
 @app.post("/api/submit", response_model=SubmissionResponse)
 async def submit_lead(
     submission: SubmissionCreate,
@@ -265,12 +280,15 @@ async def submit_lead(
         # Check rate limit using Upstash Redis
         await check_rate_limit(client_ip)
 
+        # Normalize website URL (add https:// if missing)
+        normalized_website = normalize_website_url(submission.website) if submission.website else None
+
         # Create submission in database
         submission_id = await create_submission(
             name=submission.name,
             email=submission.email,
             company=submission.company,
-            website=submission.website,
+            website=normalized_website,
             industry=submission.industry.value,
             challenge=submission.challenge,
         )
