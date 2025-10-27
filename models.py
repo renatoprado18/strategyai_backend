@@ -22,9 +22,12 @@ class IndustryEnum(str, Enum):
 
 
 class StatusEnum(str, Enum):
-    """Submission status"""
+    """Submission status with workflow stages"""
     PENDING = "pending"
+    PROCESSING = "processing"
     COMPLETED = "completed"
+    READY_TO_SEND = "ready_to_send"
+    SENT = "sent"
     FAILED = "failed"
 
 
@@ -268,4 +271,18 @@ class RegeneratePDFResponse(BaseModel):
     success: bool
     pdf_url: Optional[str] = None
     message: Optional[str] = None
+    error: Optional[str] = None
+
+
+# Status Update Models
+
+class UpdateStatusRequest(BaseModel):
+    """Request to update submission status"""
+    status: StatusEnum
+
+
+class UpdateStatusResponse(BaseModel):
+    """Response after updating status"""
+    success: bool
+    new_status: Optional[str] = None
     error: Optional[str] = None

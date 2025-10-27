@@ -33,6 +33,8 @@ from models import (
     ApplyEditRequest,
     ApplyEditResponse,
     RegeneratePDFResponse,
+    UpdateStatusRequest,
+    UpdateStatusResponse,
 )
 from database import (
     init_db,
@@ -56,6 +58,7 @@ from ai_editor import (  # NEW: AI-powered report editor
     extract_section_context,
 )
 from pdf_generator import generate_pdf_from_report  # PDF generation
+from confidence_scorer import calculate_confidence_score  # AI confidence scoring
 
 load_dotenv()
 
@@ -485,6 +488,39 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
         )
 
         print(f"[OK] Analysis completed for submission {submission_id}")
+
+        # Calculate confidence score automatically
+        try:
+            print(f"[CONFIDENCE] Calculating confidence score for submission {submission_id}...")
+            submission_data = await get_submission(submission_id)
+            confidence_score, confidence_breakdown = calculate_confidence_score(
+                submission_data=submission_data,
+                report_json=report_json,
+                data_quality_json=data_quality_json,
+                processing_metadata=processing_metadata_json,
+            )
+
+            # Add timestamp
+            from datetime import datetime, timezone
+            confidence_breakdown["calculated_at"] = datetime.now(timezone.utc).isoformat()
+
+            # Update processing metadata with confidence
+            processing_meta_with_confidence = json.loads(processing_metadata_json)
+            processing_meta_with_confidence["confidence_score"] = confidence_score
+            processing_meta_with_confidence["confidence_breakdown"] = confidence_breakdown
+
+            # Save confidence to database
+            await update_submission_status(
+                submission_id=submission_id,
+                status="completed",
+                report_json=report_json,
+                data_quality_json=data_quality_json,
+                processing_metadata=json.dumps(processing_meta_with_confidence, ensure_ascii=False),
+            )
+
+            print(f"[CONFIDENCE] ✅ Confidence score: {confidence_score}/100 ({confidence_breakdown['interpretation']['label']})")
+        except Exception as conf_error:
+            print(f"[WARNING] Confidence calculation failed: {conf_error}. Analysis still saved successfully.")
 
         # Progress: Complete!
         emit_progress(submission_id, "completed", f"✅ Relatório concluído! Qualidade: {data_quality['quality_tier'].upper()}", 100)
@@ -1056,6 +1092,121 @@ async def regenerate_analysis(
     except Exception as e:
         print(f"[ERROR] Regenerate error: {e}")
         return ReprocessResponse(success=False, error=str(e))
+
+
+@app.patch("/api/admin/submissions/{submission_id}/status", response_model=UpdateStatusResponse)
+async def update_status(
+    submission_id: int,
+    request: UpdateStatusRequest,
+    current_user: dict = RequireAuth,
+):
+    """
+    Update submission status (Protected Admin endpoint)
+
+    Workflow stages:
+    - pending: Initial state, waiting to process
+    - processing: Analysis in progress
+    - completed: Analysis done, needs review
+    - ready_to_send: QA passed, ready to send to client
+    - sent: Delivered to client
+    - failed: Processing error
+
+    Requires valid JWT token in Authorization header
+    """
+    try:
+        print(f"[AUTH] User {current_user['email']} updating status for submission {submission_id} to {request.status}")
+
+        # Check if submission exists
+        submission = await get_submission(submission_id)
+        if not submission:
+            raise HTTPException(status_code=404, detail="Submission not found")
+
+        # Update status in database
+        await update_submission_status(
+            submission_id=submission_id,
+            status=request.status.value,
+        )
+
+        print(f"[OK] Updated submission {submission_id} status to {request.status}")
+
+        return UpdateStatusResponse(success=True, new_status=request.status.value)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Status update error: {e}")
+        return UpdateStatusResponse(success=False, error=str(e))
+
+
+@app.get("/api/admin/submissions/{submission_id}/confidence")
+async def calculate_submission_confidence(
+    submission_id: int,
+    current_user: dict = RequireAuth,
+):
+    """
+    Calculate or recalculate confidence score for a submission (Protected Admin endpoint)
+
+    Returns confidence score (0-100) with detailed breakdown.
+
+    Score components:
+    - Data Completeness (0-30): How much data was gathered
+    - Source Success Rate (0-25): How many data sources succeeded
+    - Market Research Depth (0-20): Quality of competitor/trend analysis
+    - Analysis Comprehensiveness (0-15): Coverage of all frameworks
+    - TAM/SAM/SOM Availability (0-10): Market sizing quality
+
+    Requires valid JWT token in Authorization header
+    """
+    try:
+        print(f"[AUTH] User {current_user['email']} calculating confidence for submission {submission_id}")
+
+        # Get submission
+        submission = await get_submission(submission_id)
+        if not submission:
+            raise HTTPException(status_code=404, detail="Submission not found")
+
+        # Calculate confidence score
+        score, breakdown = calculate_confidence_score(
+            submission_data=submission,
+            report_json=submission.get("report_json"),
+            data_quality_json=submission.get("data_quality_json"),
+            processing_metadata=submission.get("processing_metadata"),
+        )
+
+        # Add timestamp
+        from datetime import datetime, timezone
+        breakdown["calculated_at"] = datetime.now(timezone.utc).isoformat()
+
+        # Update database with new score
+        await update_submission_status(
+            submission_id=submission_id,
+            status=submission["status"],  # Keep existing status
+            report_json=submission.get("report_json"),  # Keep existing report
+            data_quality_json=submission.get("data_quality_json"),  # Keep existing data quality
+            processing_metadata=json.dumps({
+                **(json.loads(submission.get("processing_metadata", "{}")) if submission.get("processing_metadata") else {}),
+                "confidence_score": score,
+                "confidence_breakdown": breakdown,
+            }),
+        )
+
+        print(f"[OK] Calculated confidence score {score}/100 for submission {submission_id}")
+
+        return {
+            "success": True,
+            "submission_id": submission_id,
+            "confidence_score": score,
+            "breakdown": breakdown,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Confidence calculation error: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+        }
 
 
 @app.get("/api/admin/dashboard/intelligence")

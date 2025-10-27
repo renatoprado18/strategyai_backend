@@ -3,7 +3,12 @@
     "allow": [
       "Read(//c/Users/pradord/Documents/Projects/rfap_landing/components/**)",
       "Read(//c/Users/pradord/Documents/Projects/rfap_landing/**)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(dir \"C:\\Users\\pradord\\Documents\\Projects\\strategy-ai-backend\" /b)",
+      "Bash(git log:*)",
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\ndocs: Add comprehensive analysis quality improvement plan\n\nCreated detailed roadmap to match/exceed \"Mentoria Exclusiva 10XMentorAI\" \nPDF quality standard (68 pages, 11 frameworks, 23+ prompt models).\n\nAnalysis Summary:\n- Current: 12 frameworks, flat structure, partial data honesty\n- Target: 15-17 frameworks, 4-question narrative, universal transparency\n- PDF Benchmark: Premium consulting quality with Brazilian case studies\n\nKey Improvements Planned:\n\nPriority 1 (2 days):\n- Restructure around 4 strategic questions (Where am I? Where to go? How? What now?)\n- Expand Porter to 7 forces (add Partnerships/Ecosystems, AI/Innovation)\n- Universal \"insufficient data\" handling (not just TAM/SAM/SOM)\n- Add review cadence specifications (quarterly/semi-annual/annual)\n\nPriority 2 (3 days):\n- Growth Hacking Loops framework (LEAP, SCALE models)\n- Multi-Criteria Decision Matrix (AHP + TOPSIS for M&A decisions)\n- Prompt engineering templates in output (RACE, TRACE, SCAN, etc.)\n- Framework integration maps (show how insights flow)\n\nPriority 3 (1 week):\n- Dynamic SWOT with confidence levels per insight\n- Probabilistic scenario planning with Monte Carlo\n- Real-world Brazilian case study references\n\nGap Analysis:\n- Missing: Question structure, prompt transparency, 2 frameworks, integration maps\n- Missing: Review governance, systematic data honesty, confidence levels\n- Strength: Already have 12 solid frameworks, cost-optimized pipeline\n\nExpected Outcomes:\n- Match PDF quality while remaining cost-effective ($18-25 vs $15-20)\n- Enable client to understand and replicate methodology\n- Transform one-time analysis into living strategy tool\n- Competitive advantage: Dynamic analysis vs static PDF templates\n\nTimeline: 2 weeks to full implementation\nROI: Can charge 2-3x for \"premium analysis tier\"\n\n🚀 Generated with Claude Code\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []
