@@ -18,6 +18,14 @@ from datetime import datetime
 import os
 from dotenv import load_dotenv
 
+# Production-grade validation utilities
+from validation_utils import (
+    enforce_portuguese_output,
+    CostTracker,
+    assess_data_quality,
+    detect_english_leakage
+)
+
 logger = logging.getLogger(__name__)
 load_dotenv()
 
@@ -43,8 +51,9 @@ async def call_llm_with_retry(
     system_prompt: str = "",
     temperature: float = 0.7,
     max_tokens: int = 4000,
-    max_retries: int = MAX_RETRIES
-) -> str:
+    max_retries: int = MAX_RETRIES,
+    cost_tracker: Optional[CostTracker] = None
+) -> tuple[str, dict]:
     """
     Call LLM with automatic retry logic and progressive temperature reduction
 
@@ -56,9 +65,10 @@ async def call_llm_with_retry(
         temperature: Initial temperature (will be reduced on retries)
         max_tokens: Max tokens
         max_retries: Maximum retry attempts
+        cost_tracker: Optional CostTracker instance
 
     Returns:
-        Valid JSON string
+        (valid_json_string, usage_stats)
     """
     last_error = None
 
@@ -74,7 +84,7 @@ async def call_llm_with_retry(
             else:
                 strict_prompt = prompt
 
-            response = await call_llm(
+            response, usage_stats = await call_llm(
                 model=model,
                 prompt=strict_prompt,
                 system_prompt=system_prompt or "Output JSON ONLY. No markdown. No explanations.",
@@ -85,8 +95,17 @@ async def call_llm_with_retry(
             # Validate JSON
             json.loads(response)  # Will raise JSONDecodeError if invalid
 
+            # Log usage to cost tracker
+            if cost_tracker:
+                cost_tracker.log_usage(
+                    stage_name,
+                    model,
+                    usage_stats["input_tokens"],
+                    usage_stats["output_tokens"]
+                )
+
             logger.info(f"[{stage_name}] ✅ Valid JSON received (attempt {attempt + 1})")
-            return response
+            return response, usage_stats
 
         except json.JSONDecodeError as e:
             last_error = e
@@ -117,8 +136,13 @@ async def call_llm(
     temperature: float = 0.7,
     max_tokens: int = 4000,
     response_format: str = "json"
-) -> str:
-    """Generic LLM caller for any OpenRouter model"""
+) -> tuple[str, dict]:
+    """
+    Generic LLM caller for any OpenRouter model
+
+    Returns:
+        (content, usage_stats) where usage_stats = {"input_tokens": int, "output_tokens": int}
+    """
 
     if not OPENROUTER_API_KEY:
         raise ValueError("OPENROUTER_API_KEY not set")
@@ -187,8 +211,15 @@ async def call_llm(
                                     content = content[:i+1]
                                     break
 
-                logger.info(f"[LLM] {model} responded ({len(content)} chars)")
-                return content
+                # Extract usage stats
+                usage = data.get("usage", {})
+                usage_stats = {
+                    "input_tokens": usage.get("prompt_tokens", 0),
+                    "output_tokens": usage.get("completion_tokens", 0)
+                }
+
+                logger.info(f"[LLM] {model} responded ({len(content)} chars, {usage_stats['input_tokens']} in, {usage_stats['output_tokens']} out)")
+                return content, usage_stats
             else:
                 raise Exception(f"Unexpected API response: {data}")
 
@@ -613,10 +644,11 @@ Create 3 scenarios:
   }},
 
   "tam_sam_som": {{
-    "tam_total_market": "R$ X billion - description",
-    "sam_available_market": "R$ Y million - description",
-    "som_obtainable_market": "R$ Z million - description",
-    "justificativa": "Explain assumptions and calculations"
+    "tam_total_market": "R$ X bilhões - descrição COM FONTE (ex: 'Segundo relatório X' ou 'Estimativa baseada em crescimento do setor')",
+    "sam_available_market": "R$ Y milhões - descrição COM FONTE ou marcado como 'Estimativa sem dados'",
+    "som_obtainable_market": "R$ Z milhões - descrição COM FONTE ou marcado como 'Projeção baseada em análise'",
+    "justificativa": "Explique premissas e cálculos. SE NÃO HOUVER dados fornecidos, escreva 'Dados insuficientes para estimativa precisa. Análise qualitativa: [descrição do mercado sem números inventados].'",
+    "fonte_dados": "Cite fonte específica (website, documento fornecido, projeção baseada em X) ou 'Análise qualitativa apenas - dados não disponíveis'"
   }},
 
   "posicionamento_competitivo": {{
@@ -672,15 +704,16 @@ Create 3 scenarios:
   "recomendacoes_prioritarias": [
     {{
       "prioridade": 1,
-      "titulo": "Concise recommendation title",
-      "recomendacao": "WHAT to do - detailed description",
-      "justificativa": "WHY - data-driven rationale",
-      "como_implementar": ["Step 1", "Step 2", "Step 3"],
-      "prazo": "Timeline",
-      "investimento_estimado": "R$ X",
-      "retorno_esperado": "R$ Y in Z months",
-      "metricas_sucesso": ["Metric 1", "Metric 2"],
-      "riscos_mitigacao": ["Risk 1 + mitigation", "Risk 2 + mitigation"]
+      "titulo": "Título conciso e ESPECÍFICO para {company} (NÃO genérico)",
+      "recomendacao": "O QUE fazer - descrição detalhada ESPECÍFICA para o contexto de {company}. EVITE recomendações genéricas que poderiam aplicar a qualquer empresa.",
+      "justificativa": "POR QUE - fundamentação baseada em dados específicos de {company} e seu mercado",
+      "porque_especifico_para_empresa": "Explique por que esta recomendação é única para {company} e NÃO seria aplicável a todos os concorrentes",
+      "como_implementar": ["Passo 1 específico", "Passo 2 específico", "Passo 3 específico"],
+      "prazo": "Prazo realista",
+      "investimento_estimado": "R$ X (com fonte ou marcado como 'Estimativa')",
+      "retorno_esperado": "R$ Y em Z meses (com premissas ou marcado como 'Projeção')",
+      "metricas_sucesso": ["Métrica 1 mensurável", "Métrica 2 mensurável"],
+      "riscos_mitigacao": ["Risco 1 + mitigação", "Risco 2 + mitigação"]
     }},
     {{"prioridade": 2, "...": "..."}},
     {{"prioridade": 3, "...": "..."}}
@@ -694,12 +727,27 @@ Create 3 scenarios:
 }}
 ```
 
-**REQUIREMENTS:**
-- Use specific numbers (not "many", "some", "growing")
-- Base analysis on extracted data facts
-- Be actionable (not academic)
-- Brazilian Portuguese
-- JSON only, no markdown
+**REQUIREMENTS CRÍTICOS:**
+1. **FONTE DE DADOS:** Para TAM/SAM/SOM e números específicos:
+   - SE houver fonte (website, documento), cite explicitamente
+   - SE NÃO houver dados, escreva "Estimativa baseada em [premissa]" ou "Dados não disponíveis - análise qualitativa"
+   - NUNCA invente números sem indicar que é estimativa
+
+2. **RECOMENDAÇÕES ESPECÍFICAS (NÃO GENÉRICAS):**
+   - Cada recomendação deve ser única para {company}
+   - Explique por que NÃO aplicaria a todos os concorrentes
+   - Use contexto específico (produto, mercado, challenge fornecido)
+   - EVITE: "expandir serviços", "inovar", "melhorar eficiência" (muito genérico)
+   - PREFIRA: Ações específicas baseadas no contexto único de {company}
+
+3. **QUALIDADE:**
+   - Use números específicos (não "muitos", "alguns", "crescendo")
+   - Baseie análise em fatos dos dados extraídos
+   - Seja acionável (não acadêmico)
+   - Português brasileiro profissional
+   - Somente JSON válido, sem markdown
+
+**SE DADOS INSUFICIENTES:** Seja honesto. Escreva "Análise limitada por falta de dados X, Y, Z" ao invés de inventar.
 """
 
     system_prompt = "You are a strategic business analyst helping companies develop legitimate competitive strategies. Apply frameworks rigorously using available market data. Be specific, data-driven, and actionable. Output in Brazilian Portuguese."
@@ -835,27 +883,32 @@ async def stage4_competitive_matrix(
     competitors_data = extracted_data.get("competitors", [])
     positioning = strategic_analysis.get("posicionamento_competitivo", {})
 
-    prompt = f"""Generate a structured competitive intelligence matrix for {company} in {industry}.
+    prompt = f"""**TAREFA:** Gere uma matriz de inteligência competitiva COMPLETA para {company} no setor de {industry} no Brasil.
 
-Competitor Data:
+**REQUISITO CRÍTICO: LISTE TODOS OS CONCORRENTES RELEVANTES (mínimo 5-7 empresas, incluindo grandes, médios e emergentes).**
+
+Dados de Concorrentes Disponíveis:
 {json.dumps(competitors_data, indent=2, ensure_ascii=False)}
 
-Positioning Analysis:
+Análise de Posicionamento:
 {json.dumps(positioning, indent=2, ensure_ascii=False)}
 
-Create a comprehensive competitive matrix with:
+**INSTRUÇÃO:** Baseie-se nos dados fornecidos, MAS também liste concorrentes conhecidos do mercado brasileiro de {industry} que NÃO estão nos dados (ex: se for pagamentos, inclua Cielo, PagSeguro, GetNet, Mercado Pago, SumUp, Rede, SafraPay, etc).
 
-Return JSON:
+Para concorrentes NÃO presentes nos dados fornecidos, marque campos como "Estimativa baseada em conhecimento do mercado" ou "N/A - dados não disponíveis".
+
+Retorne JSON em PORTUGUÊS BRASILEIRO:
 
 {{
   "competitive_matrix": {{
-    "competitors": ["{company}", "Competitor A", "Competitor B", "Competitor C"],
-    "features": ["Pricing", "Tech Stack", "Market Share", "Strengths", "Weaknesses", "Growth Rate", "Funding"],
+    "competitors": ["{company}", "Concorrente 1 REAL", "Concorrente 2 REAL", "Concorrente 3 REAL", "...pelo menos 5-7 total"],
+    "features": ["Preço", "Tecnologia", "Market Share", "Pontos Fortes", "Pontos Fracos", "Taxa de Crescimento", "Financiamento"],
     "matrix": [
-      ["{company}", "Value", "Value", "Value", "..."],
-      ["Competitor A", "Value", "Value", "Value", "..."],
-      ["Competitor B", "..."]
-    ]
+      ["{company}", "Valor", "Valor", "Valor", "..."],
+      ["Concorrente 1", "Valor (ou 'N/A se não disponível')", "Valor", "Valor", "..."],
+      ["Concorrente 2", "..."]
+    ],
+    "fonte_dados": "Marque quais concorrentes vieram dos dados fornecidos vs conhecimento do mercado"
   }},
 
   "positioning_map": {{
@@ -904,11 +957,15 @@ Return JSON:
   ]
 }}
 
-Use real data from extracted data. If data missing, use "N/A" or "Estimated: X".
-Be specific and actionable.
+**REQUISITOS:**
+1. **MÍNIMO 5-7 CONCORRENTES** - Liste TODOS os players relevantes do mercado brasileiro
+2. **FONTE DE DADOS** - Indique se dados vieram de fontes fornecidas ou conhecimento do mercado
+3. **HONESTIDADE** - Se não há dados, escreva "N/A" ou "Estimativa baseada em X"
+4. **PORTUGUÊS** - TODO o output em português brasileiro
+5. **ESPECÍFICO** - Seja específico e acionável, não genérico
 """
 
-    system_prompt = "You are a competitive intelligence analyst. Create structured, data-driven competitive matrices. Output JSON only."
+    system_prompt = "Você é um analista de inteligência competitiva brasileira. Crie matrizes estruturadas baseadas em dados. Liste TODOS os concorrentes relevantes do mercado (mínimo 5-7). Output somente JSON em português."
 
     response = await call_llm_with_retry(
         stage_name="STAGE 4",
@@ -944,93 +1001,101 @@ async def stage5_risk_and_priority(
     swot = strategic_analysis.get("analise_swot", {})
     scenarios = strategic_analysis.get("planejamento_cenarios", {})
 
-    prompt = f"""For {company}, quantify risks and score recommendations by priority.
+    prompt = f"""**ATENÇÃO CRÍTICA: TODO O OUTPUT DEVE ESTAR EM PORTUGUÊS BRASILEIRO (pt-BR) ABSOLUTAMENTE PERFEITO E PROFISSIONAL.**
 
-Recommendations:
+**NÃO USE INGLÊS EM HIPÓTESE ALGUMA. RESPOSTAS EM INGLÊS OU COM TERMOS EM INGLÊS SERÃO REJEITADAS.**
+
+---
+
+Para {company}, quantifique riscos e pontue recomendações por prioridade, com base nos dados fornecidos.
+
+Recomendações Estratégicas:
 {json.dumps(recommendations, indent=2, ensure_ascii=False)}
 
-SWOT Analysis:
+Análise SWOT:
 {json.dumps(swot, indent=2, ensure_ascii=False)}
 
-Scenarios:
+Cenários de Planejamento:
 {json.dumps(scenarios, indent=2, ensure_ascii=False)}
 
-Return JSON:
+---
+
+Retorne JSON SOMENTE EM PORTUGUÊS BRASILEIRO:
 
 {{
   "risk_analysis": [
     {{
-      "risk": "Risk description",
-      "category": "Competitive/Market/Operational/Financial/Technology",
+      "risk": "Descrição do risco em português claro e específico",
+      "category": "Competitivo/Mercado/Operacional/Financeiro/Tecnológico",
       "probability": 0.7,
       "impact": 8,
       "risk_score": 5.6,
-      "severity": "HIGH/MEDIUM/LOW",
-      "timeframe": "3-6 months",
-      "indicators": ["Early warning sign 1", "Early warning sign 2"],
-      "mitigation_cost": "R$ 50k",
+      "severity": "ALTO/MÉDIO/BAIXO",
+      "timeframe": "3-6 meses",
+      "indicators": ["Sinal de alerta precoce 1", "Sinal de alerta precoce 2"],
+      "mitigation_cost": "R$ 50 mil",
       "mitigation_strategies": [
-        "Specific action 1 with timeline",
-        "Specific action 2",
-        "Contingency plan"
+        "Ação específica 1 com prazo em português",
+        "Ação específica 2 em português",
+        "Plano de contingência em português"
       ]
     }}
   ],
 
   "recommendation_scoring": [
     {{
-      "recommendation": "Recommendation title from input",
+      "recommendation": "Título da recomendação (do input)",
       "effort_score": 3,
       "impact_score": 9,
       "efficiency_ratio": 3.0,
-      "priority_tier": "🔥 VERY HIGH / ⚡ HIGH / ✓ MEDIUM / ○ LOW",
+      "priority_tier": "🔥 MUITO ALTO / ⚡ ALTO / ✓ MÉDIO / ○ BAIXO",
       "roi_calculation": {{
-        "investment": "R$ 50k",
-        "expected_return_12m": "R$ 360k",
+        "investment": "R$ 50 mil",
+        "expected_return_12m": "R$ 360 mil",
         "roi_percentage": 620,
         "payback_period_days": 45,
         "risk_adjusted_return": {{
-          "best_case": "R$ 900k (25% probability)",
-          "expected_case": "R$ 360k (50% probability)",
-          "worst_case": "R$ 120k (25% probability)"
+          "best_case": "R$ 900 mil (25% probabilidade)",
+          "expected_case": "R$ 360 mil (50% probabilidade)",
+          "worst_case": "R$ 120 mil (25% probabilidade)"
         }}
       }},
-      "dependencies": ["What must happen first"],
-      "blockers": ["Potential obstacles"]
+      "dependencies": ["O que deve acontecer primeiro (em português)"],
+      "blockers": ["Obstáculos potenciais (em português)"]
     }}
   ],
 
   "priority_matrix": {{
     "quick_wins": [
       {{
-        "action": "Low effort, high impact action",
+        "action": "Ação de baixo esforço e alto impacto em português",
         "effort": 2,
         "impact": 8,
-        "timeline": "0-30 days"
+        "timeline": "0-30 dias"
       }}
     ],
     "strategic_investments": [
       {{
-        "action": "High effort, high impact action",
+        "action": "Ação de alto esforço e alto impacto em português",
         "effort": 8,
         "impact": 9,
-        "timeline": "3-6 months"
+        "timeline": "3-6 meses"
       }}
     ],
     "fill_ins": [
       {{
-        "action": "Low effort, medium impact",
+        "action": "Ação de baixo esforço e impacto médio em português",
         "effort": 2,
         "impact": 5,
-        "timeline": "As resources allow"
+        "timeline": "Conforme recursos permitirem"
       }}
     ],
     "avoid": [
       {{
-        "action": "High effort, low impact - avoid",
+        "action": "Ação de alto esforço e baixo impacto - evitar (em português)",
         "effort": 7,
         "impact": 3,
-        "reason": "Why to avoid"
+        "reason": "Por que evitar (em português)"
       }}
     ]
   }},
@@ -1038,24 +1103,37 @@ Return JSON:
   "critical_path": [
     {{
       "month": 1,
-      "milestone": "Milestone name",
-      "actions": ["Action 1", "Action 2"],
-      "success_criteria": "How to measure success",
-      "risks": ["Risk during this month"]
+      "milestone": "Nome do marco (em português)",
+      "actions": ["Ação 1 em português", "Ação 2 em português"],
+      "success_criteria": "Como medir sucesso (em português)",
+      "risks": ["Risco durante este mês (em português)"]
     }}
   ]
 }}
 
-Scoring scale:
-- Probability: 0.0-1.0 (0% to 100%)
-- Impact: 1-10 (1=minimal, 10=catastrophic)
-- Effort: 1-10 (1=trivial, 10=massive)
-- Risk Score = Probability × Impact
+**REGRAS OBRIGATÓRIAS:**
+1. TODO o texto deve estar em português brasileiro profissional
+2. NÃO traduza literalmente termos técnicos - use equivalentes naturais em português
+3. NÃO inclua UMA ÚNICA palavra em inglês
+4. Seja específico, quantitativo e acionável
+5. Cite fontes quando usar dados específicos, ou marque como "Estimativa baseada em análise"
 
-Be specific, quantitative, and actionable.
+**ESCALA DE PONTUAÇÃO:**
+- Probabilidade: 0.0-1.0 (0% a 100%)
+- Impacto: 1-10 (1=mínimo, 10=catastrófico)
+- Esforço: 1-10 (1=trivial, 10=massivo)
+- Score de Risco = Probabilidade × Impacto
+
+**VALIDAÇÃO FINAL:** No final da sua resposta JSON, adicione mentalmente: "Idioma conferido: 100% português brasileiro"
+
+**SE QUALQUER PARTE ESTIVER EM INGLÊS, A RESPOSTA É INVÁLIDA.**
 """
 
-    system_prompt = "You are a strategic risk analyst. Quantify risks, calculate ROI, prioritize ruthlessly. Output JSON only."
+    system_prompt = """Você é um analista estratégico de riscos brasileiro. Sua especialidade é quantificar riscos, calcular ROI e priorizar ações estratégicas.
+
+REGRA ABSOLUTA: TODO output deve estar em português brasileiro (pt-BR) profissional e correto. NUNCA use inglês. Output somente JSON válido.
+
+Seja específico, quantitativo e acionável. Use português natural e profissional."""
 
     response = await call_llm_with_retry(
         stage_name="STAGE 5",
