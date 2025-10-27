@@ -1,465 +1,300 @@
-# Strategy AI Backend v2.0 - FastAPI + Supabase + Apify
+# Strategy AI Backend
 
-Production-ready FastAPI backend for Strategy AI Lead Generator with Supabase PostgreSQL, JWT authentication, Apify web scraping, and Upstash Redis rate limiting.
+**Production-ready FastAPI backend** for AI-powered strategic business analysis platform.
 
-## 🚀 Features
-
-### Core Functionality
-- **Lead Submission API**: Public endpoint for lead capture with corporate email validation
-- **AI Analysis Engine**: GPT-4o-mini powered strategic analysis reports
-- **Apify Integration**: Web scraping for competitor research, industry trends, and data enrichment
-- **Background Processing**: Async analysis without blocking requests
-
-### Infrastructure
-- **Supabase PostgreSQL**: Scalable cloud database with Row Level Security (RLS)
-- **JWT Authentication**: Secure admin access with Supabase Auth
-- **Upstash Redis**: Distributed rate limiting with TTL
-- **Protected Admin Endpoints**: JWT-protected submission management
-
-### Security
-- ✅ JWT token-based authentication for admin routes
-- ✅ Row Level Security (RLS) policies in Supabase
-- ✅ Redis-based rate limiting (3 submissions per IP per day)
-- ✅ Corporate email validation (blocks personal domains)
-- ✅ CORS protection
-
-## 🏗️ Tech Stack
-
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| Framework | FastAPI | 0.115.6 |
-| Language | Python | 3.11+ |
-| Database | Supabase (PostgreSQL) | Latest |
-| Authentication | Supabase Auth + JWT | - |
-| Rate Limiting | Upstash Redis | Latest |
-| Web Scraping | Apify | Latest |
-| AI | OpenRouter API | gpt-4o-mini |
-| Async HTTP | httpx | 0.28.1 |
-| Validation | Pydantic | 2.10.5 |
-
-## 📁 Project Structure
+## Architecture Overview
 
 ```
 strategy-ai-backend/
-├── main.py                 # FastAPI app with endpoints and auth
-├── models.py               # Pydantic models (requests, responses, auth)
-├── database.py             # Supabase database operations
-├── supabase_client.py      # Supabase client initialization
-├── auth.py                 # JWT authentication middleware
-├── rate_limiter.py         # Upstash Redis rate limiting
-├── apify_service.py        # Apify web scraping integration
-├── analysis.py             # AI analysis engine with Apify enrichment
-├── requirements.txt        # Python dependencies
-├── .env.example            # Environment variables template
-├── Procfile                # Railway deployment config
-├── railway.json            # Railway build configuration
-└── README.md               # This file
+├── app/
+│   ├── main.py                    # FastAPI app entry point
+│   ├── core/                      # Core infrastructure
+│   │   ├── database.py            # Supabase operations
+│   │   ├── supabase.py            # Client initialization
+│   │   ├── cache.py               # 3-tier Redis caching
+│   │   └── security/              # Security utilities
+│   │       ├── rate_limiter.py
+│   │       ├── prompt_sanitizer.py
+│   │       └── hallucination_detector.py
+│   ├── routes/                    # API endpoints
+│   │   └── auth.py                # Authentication
+│   ├── services/                  # Business logic
+│   │   ├── analysis/              # Strategic analysis
+│   │   │   ├── enhanced.py        # Main analysis engine
+│   │   │   ├── multistage.py     # Multi-stage pipeline
+│   │   │   ├── deep_dive.py      # Industry deep dives
+│   │   │   └── confidence_scorer.py
+│   │   ├── ai/                    # AI services
+│   │   │   ├── chat.py            # Report Q&A
+│   │   │   ├── editor.py          # AI editing
+│   │   │   └── routing.py         # Model selection
+│   │   ├── data/                  # Data collection
+│   │   │   ├── apify.py           # Web scraping
+│   │   │   └── perplexity.py     # Market research
+│   │   ├── intelligence/          # Advanced features
+│   │   │   ├── dashboard.py       # Dashboard insights
+│   │   │   └── memory.py          # Learning system
+│   │   ├── pdf_generator.py       # PDF exports
+│   │   └── report_adapter.py      # Legacy compatibility
+│   ├── models/                    # Data models
+│   │   └── schemas.py             # Pydantic schemas
+│   └── utils/                     # Utilities
+│       └── validation.py          # Input validation
+├── tests/                         # Test suite
+├── scripts/                       # Utility scripts
+├── requirements.txt               # Dependencies
+├── Procfile                       # Railway deployment
+└── README.md                      # This file
 ```
 
-## 🔧 Setup Instructions
+## Features
 
-### Prerequisites
+### Core Analysis Pipeline
+- **Multi-Stage Analysis**: Pre-research → Core Analysis → Deep Dives → Synthesis
+- **12 Strategic Frameworks**: Porter's 5 Forces, SWOT, BCG Matrix, Ansoff, Blue Ocean, etc.
+- **Adaptive Model Routing**: Automatic selection between GPT-4o, Gemini Flash, Claude based on task
+- **Cost Optimization**: $15-20 per full analysis (90%+ cost reduction vs GPT-4o only)
 
-1. **Python 3.11+** installed
-2. **Supabase account** (https://supabase.com)
-3. **Upstash Redis account** (https://upstash.com)
-4. **Apify account** (https://apify.com)
-5. **OpenRouter API key** (https://openrouter.ai)
+### Data Collection
+- **Web Scraping**: Apify integration for company website analysis
+- **Market Research**: Perplexity API for industry insights
+- **Multi-Source Intelligence**: Combines web scraping, AI research, and user-provided documents
 
-### 1. Install Dependencies
+### AI-Powered Features
+- **Report Chat**: OpenRouter-based Q&A on analysis reports
+- **AI Editing**: Natural language report modifications
+- **Institutional Memory**: Learns from past analyses to improve future results
+- **Dashboard Intelligence**: AI-generated insights for company dashboards
+
+### Quality & Security
+- **Language Validation**: Enforces Portuguese output (prevents English leakage)
+- **Source Attribution**: Validates quantitative claims have sources
+- **Hallucination Detection**: Flags unsupported data points
+- **Prompt Injection Protection**: Sanitizes user inputs
+- **Rate Limiting**: Upstash Redis-based request throttling
+
+### Performance
+- **3-Tier Caching**: Dashboard (5min), Reports (30min), Enrichment (24hr)
+- **Confidence Scoring**: 0-100 quality scores with 5 components
+- **Data Quality Assessment**: Legendary/Full/Good/Partial/Minimal tiers
+
+## Setup
+
+### 1. Prerequisites
+- Python 3.11+
+- Supabase account
+- OpenRouter API key
+- Upstash Redis instance
+- Apify account (optional)
+- Perplexity API key (optional)
+
+### 2. Environment Variables
+
+Create `.env` file:
 
 ```bash
-# Create virtual environment
+# Database
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-service-role-key
+DATABASE_URL=postgresql://user:pass@host:5432/db
+
+# AI Models
+OPENROUTER_API_KEY=sk-or-v1-...
+PERPLEXITY_API_KEY=pplx-...
+
+# Caching & Rate Limiting
+UPSTASH_REDIS_REST_URL=https://your-redis.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your-token
+
+# Web Scraping
+APIFY_API_TOKEN=apify_api_...
+
+# Authentication
+JWT_SECRET_KEY=your-secret-key
+JWT_ALGORITHM=HS256
+JWT_EXPIRATION_MINUTES=10080
+
+# Environment
+ENVIRONMENT=production
+ALLOWED_ORIGINS=https://yourapp.com
+```
+
+### 3. Install Dependencies
+
+```bash
 python -m venv venv
-
-# Activate virtual environment
-# Windows:
-venv\Scripts\activate
-# Mac/Linux:
-source venv/bin/activate
-
-# Install dependencies
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Setup Supabase
-
-1. Create a new Supabase project at https://supabase.com
-2. Go to **Settings > API** and copy:
-   - Project URL → `SUPABASE_URL`
-   - anon/public key → `SUPABASE_ANON_KEY`
-   - service_role key → `SUPABASE_SERVICE_KEY`
-
-3. Go to **SQL Editor** and run this schema:
-
-```sql
--- Create submissions table
-CREATE TABLE IF NOT EXISTS submissions (
-    id BIGSERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    company TEXT NOT NULL,
-    website TEXT,
-    industry TEXT NOT NULL,
-    challenge TEXT,
-    status TEXT DEFAULT 'pending',
-    report_json TEXT,
-    error_message TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Create indexes
-CREATE INDEX IF NOT EXISTS idx_status ON submissions(status);
-CREATE INDEX IF NOT EXISTS idx_created ON submissions(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_email ON submissions(email);
-
--- Enable Row Level Security
-ALTER TABLE submissions ENABLE ROW LEVEL SECURITY;
-
--- Policy: Anyone can insert (public form submission)
-CREATE POLICY "Anyone can insert submissions"
-    ON submissions FOR INSERT
-    WITH CHECK (true);
-
--- Policy: Only authenticated users can view
-CREATE POLICY "Authenticated users can view all submissions"
-    ON submissions FOR SELECT
-    USING (auth.role() = 'authenticated');
-
--- Policy: Only authenticated users can update
-CREATE POLICY "Authenticated users can update submissions"
-    ON submissions FOR UPDATE
-    USING (auth.role() = 'authenticated');
-```
-
-4. Go to **Authentication > Users** and create your admin user:
-   - Click "Add user"
-   - Enter email and password
-   - Confirm email (auto-confirm in dev mode)
-
-### 3. Setup Upstash Redis
-
-1. Create account at https://upstash.com
-2. Create new Redis database (choose region closest to your Railway deployment)
-3. Copy:
-   - REST URL → `UPSTASH_REDIS_URL`
-   - REST Token → `UPSTASH_REDIS_TOKEN`
-
-### 4. Setup Apify
-
-1. Create account at https://apify.com
-2. Go to **Settings > Integrations**
-3. Generate API token → `APIFY_API_TOKEN`
-
-### 5. Create Environment File
-
-Copy `.env.example` to `.env` and fill in your credentials:
-
-```env
-# OpenRouter
-OPENROUTER_API_KEY=your_openrouter_api_key
-
-# Supabase
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_KEY=your_service_role_key
-SUPABASE_ANON_KEY=your_anon_key
-
-# JWT Secret (generate with: python -c "import secrets; print(secrets.token_urlsafe(32))")
-JWT_SECRET=your-secret-jwt-key-here
-
-# Upstash Redis
-UPSTASH_REDIS_URL=https://your-redis.upstash.io
-UPSTASH_REDIS_TOKEN=your_redis_token
-
-# Apify
-APIFY_API_TOKEN=your_apify_token
-
-# CORS (add your frontend URL)
-ALLOWED_ORIGINS=http://localhost:3000,https://your-frontend.vercel.app
-
-# Rate Limiting
-MAX_SUBMISSIONS_PER_IP_PER_DAY=3
-```
-
-### 6. Run Development Server
+### 4. Run Locally
 
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+# Development mode with auto-reload
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Production mode
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Server runs at: **http://localhost:8000**
+### 5. Run Tests
 
-API Docs: **http://localhost:8000/docs**
-
-## 📡 API Endpoints
-
-### Public Endpoints
-
-#### `GET /`
-Health check endpoint.
-
-**Response:**
-```json
-{
-  "service": "Strategy AI Lead Generator API",
-  "status": "running",
-  "version": "2.0.0",
-  "features": ["Supabase", "Authentication", "Apify Integration", "Upstash Redis"]
-}
+```bash
+pytest tests/ -v
 ```
 
-#### `POST /api/submit`
-Submit a new lead form (public, no auth required).
+## API Endpoints
 
-**Request:**
-```json
-{
-  "name": "João Silva",
-  "email": "joao@empresa.com.br",
-  "company": "Tech Startup LTDA",
-  "website": "https://techstartup.com.br",
-  "industry": "Tecnologia",
-  "challenge": "Precisamos escalar vendas B2B"
-}
+### Analysis
+- `POST /api/analyze` - Submit new analysis request
+- `GET /api/analysis/{id}` - Get analysis results
+- `POST /api/analysis/{id}/regenerate` - Regenerate analysis section
+
+### Reports
+- `GET /api/reports/{id}` - Get full report
+- `POST /api/reports/{id}/edit` - AI-powered editing
+- `POST /api/reports/{id}/chat` - Ask questions about report
+- `GET /api/reports/{id}/pdf` - Export PDF
+
+### Intelligence
+- `POST /api/dashboard/intelligence` - Generate dashboard insights
+- `GET /api/reports/{id}/confidence` - Get confidence scores
+
+### Admin
+- `GET /health` - Health check
+- `GET /api/admin/stats` - System statistics (requires auth)
+
+## Development
+
+### Import Convention
+All imports use absolute paths from `app.*`:
+
+```python
+# Correct
+from app.core.database import get_db
+from app.models.schemas import AnalysisRequest
+from app.services.analysis.enhanced import run_analysis
+
+# Incorrect
+from database import get_db
+from models import AnalysisRequest
+from analysis_enhanced import run_analysis
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "submission_id": 123
-}
+### Adding New Features
+
+1. **New Service**: Add to appropriate `app/services/` subdirectory
+2. **New Route**: Add to `app/routes/` and register in `app/main.py`
+3. **New Model**: Add Pydantic schema to `app/models/schemas.py`
+4. **New Security Feature**: Add to `app/core/security/`
+
+### Code Quality
+
+```bash
+# Format code
+black app/ tests/
+
+# Lint
+flake8 app/ tests/
+
+# Type checking
+mypy app/
 ```
 
-**Features:**
-- Corporate email validation (blocks Gmail, Hotmail, etc.)
-- Rate limiting (3 per IP per day via Redis)
-- Triggers background processing with Apify enrichment
+## Deployment
+
+### Railway (Current)
+
+The app is configured for Railway deployment via `Procfile`:
+
+```
+web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+**Pre-deployment checklist**:
+1. Set all environment variables in Railway dashboard
+2. Ensure `ALLOWED_ORIGINS` includes your frontend domain
+3. Verify Supabase connection
+4. Test health endpoint after deployment
+
+### Other Platforms
+
+**Heroku**:
+```bash
+heroku create your-app-name
+git push heroku main
+```
+
+**Docker**:
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+## Cost Optimization
+
+Current pipeline costs **$15-20 per full analysis**:
+
+| Stage | Model | Cost per Analysis |
+|-------|-------|-------------------|
+| Pre-research | Gemini Flash | $0.50 |
+| Core Analysis | Gemini Flash | $2.00 |
+| Deep Dives (3x) | Gemini Flash | $4.50 |
+| Synthesis | GPT-4o | $3.00 |
+| PDF Generation | - | $0.00 |
+| **Total** | - | **$10.00** |
+
+Additional features:
+- Chat: $0.10-0.50 per conversation
+- Editing: $0.50-2.00 per edit
+- Intelligence: $1.00-3.00 per insight
+
+## Troubleshooting
+
+### PDF Generation Fails
+**Error**: `FPDFUnicodeEncodingException`
+**Fix**: Ensure all bullet points use ASCII characters (`-` instead of Unicode bullets)
+
+### CORS Errors
+**Error**: `Access-Control-Allow-Origin` blocked
+**Fix**: Add frontend domain to `ALLOWED_ORIGINS` in `.env`
+
+### Database Connection Issues
+**Error**: `could not connect to server`
+**Fix**: Verify `SUPABASE_URL` and `SUPABASE_KEY` are correct
+
+### Rate Limiting Triggered
+**Error**: `429 Too Many Requests`
+**Fix**: Wait 60 seconds or increase limits in `app/core/security/rate_limiter.py`
+
+### Import Errors After Update
+**Error**: `ModuleNotFoundError: No module named 'models'`
+**Fix**: Update imports to use `app.*` namespace (see Import Convention above)
+
+## Contributing
+
+1. Fork repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
+
+## License
+
+Proprietary - All rights reserved
+
+## Support
+
+For issues or questions:
+- Check troubleshooting section above
+- Review error logs in Railway dashboard
+- Contact development team
 
 ---
 
-### Authentication Endpoints
-
-#### `POST /api/auth/login`
-Admin login endpoint.
-
-**Request:**
-```json
-{
-  "email": "admin@company.com",
-  "password": "your-password"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "token_type": "bearer",
-    "user": {
-      "id": "uuid-here",
-      "email": "admin@company.com"
-    }
-  }
-}
-```
-
----
-
-### Protected Admin Endpoints
-
-All admin endpoints require `Authorization: Bearer <token>` header.
-
-#### `GET /api/admin/submissions`
-Get all submissions.
-
-**Headers:**
-```
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": 1,
-      "name": "João Silva",
-      "email": "joao@empresa.com.br",
-      "company": "Tech Startup LTDA",
-      "industry": "Tecnologia",
-      "status": "completed",
-      "report_json": "{...}",
-      "created_at": "2025-01-15T10:30:00Z"
-    }
-  ]
-}
-```
-
-#### `POST /api/admin/reprocess/{submission_id}`
-Reprocess a failed submission.
-
-**Headers:**
-```
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-**Response:**
-```json
-{
-  "success": true
-}
-```
-
-## 🤖 Apify Integration
-
-The system uses Apify for comprehensive data enrichment:
-
-1. **Website Scraping**: Extracts company info from submitted website
-2. **Competitor Research**: Finds and analyzes competitors in the industry
-3. **Industry Trends**: Researches current trends and market insights
-4. **Company Enrichment**: Gathers additional company data from web sources
-
-All data is aggregated and fed into the AI analysis prompt for more accurate, data-driven strategic recommendations.
-
-## 🔒 Security Features
-
-### Authentication Flow
-
-1. Admin calls `POST /api/auth/login` with email/password
-2. Backend validates with Supabase Auth
-3. Returns JWT token (24h expiration)
-4. Admin includes token in `Authorization: Bearer <token>` header
-5. Middleware validates token on protected routes
-
-### Row Level Security (RLS)
-
-Supabase RLS policies ensure:
-- Anyone can INSERT submissions (public form)
-- Only authenticated users can SELECT/UPDATE submissions
-- Service role key bypasses RLS for backend operations
-
-### Rate Limiting
-
-- Implemented with Upstash Redis
-- Key: `ratelimit:{ip_address}`
-- TTL: 24 hours
-- Limit: 3 submissions per IP per day
-- Fails open (allows requests if Redis is down)
-
-## 🚀 Deployment
-
-### Railway Deployment
-
-1. Push code to GitHub
-2. Create new project on Railway
-3. Connect GitHub repository
-4. Add environment variables from `.env.example`
-5. Railway auto-deploys using `railway.json` configuration
-
-### Environment Variables for Production
-
-Set these in Railway dashboard:
-
-```env
-OPENROUTER_API_KEY=...
-SUPABASE_URL=...
-SUPABASE_SERVICE_KEY=...
-SUPABASE_ANON_KEY=...
-JWT_SECRET=...  # Generate strong random string
-UPSTASH_REDIS_URL=...
-UPSTASH_REDIS_TOKEN=...
-APIFY_API_TOKEN=...
-ALLOWED_ORIGINS=https://your-frontend.vercel.app
-MAX_SUBMISSIONS_PER_IP_PER_DAY=3
-```
-
-## 📊 Analysis Report Structure
-
-The AI generates a comprehensive JSON report with:
-
-```json
-{
-  "diagnostico_estrategico": {
-    "forças": ["força 1", "força 2", ...],
-    "fraquezas": ["fraqueza 1", ...],
-    "oportunidades": ["oportunidade 1", ...],
-    "ameaças": ["ameaça 1", ...]
-  },
-  "analise_mercado": {
-    "político": "análise...",
-    "econômico": "análise...",
-    "social": "análise...",
-    "tecnológico": "análise...",
-    "ambiental": "análise...",
-    "legal": "análise..."
-  },
-  "oportunidades_identificadas": ["oportunidade 1", ...],
-  "recomendacoes_prioritarias": ["recomendação 1", ...],
-  "proposta_okrs": [
-    {
-      "objetivo": "Objetivo 1",
-      "resultados_chave": ["KR1", "KR2", "KR3"]
-    }
-  ]
-}
-```
-
-## 🔄 Migration from v1.0
-
-If migrating from SQLite version:
-
-1. **Data Migration**: Export SQLite data if needed (or start fresh)
-2. **Environment Variables**: Update `.env` with new services
-3. **Dependencies**: Run `pip install -r requirements.txt`
-4. **Database**: Run Supabase SQL schema
-5. **Admin User**: Create admin user in Supabase dashboard
-6. **Deploy**: Redeploy with new environment variables
-
-## 🛠️ Development
-
-### Testing Authentication
-
-```bash
-# Login
-curl -X POST http://localhost:8000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@company.com","password":"yourpassword"}'
-
-# Use token in protected endpoint
-curl -X GET http://localhost:8000/api/admin/submissions \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE"
-```
-
-### Testing Submission
-
-```bash
-curl -X POST http://localhost:8000/api/submit \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Test User",
-    "email": "test@company.com",
-    "company": "Test Company",
-    "website": "https://example.com",
-    "industry": "Tecnologia",
-    "challenge": "Test challenge"
-  }'
-```
-
-## 📝 License
-
-MIT License - See LICENSE file for details
-
-## 🤝 Contributing
-
-This is a private project for Strategy AI. For issues or feature requests, contact the development team.
-
----
-
-**Version**: 2.0.0
 **Last Updated**: January 2025
-**Status**: Production Ready ✅
+**Version**: 2.0.0 (Post-Reorganization)

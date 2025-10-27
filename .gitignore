@@ -48,3 +48,4 @@ database.db
 # OS
 .DS_Store
 Thumbs.db
+.pytest_cache/
