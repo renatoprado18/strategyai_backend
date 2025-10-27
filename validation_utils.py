@@ -173,6 +173,89 @@ def validate_source_attribution(json_output: Dict[str, Any], required_fields: Li
     return is_valid, missing_sources
 
 
+def validate_source_attribution_strict(json_output: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    STRICT source attribution validation - every quantitative claim MUST have source
+
+    Returns:
+        {
+            "is_valid": bool,
+            "violations": List[Dict],
+            "severity": "OK" | "WARNING" | "CRITICAL"
+        }
+    """
+
+    violations = []
+
+    # Extended list of patterns requiring sources
+    quant_patterns = [
+        (r'R\$\s*[\d,]+\.?\d*\s*(trilh[oõ]es?|bilh[oõ]es?|milh[oõ]es?|mil)', 'currency'),
+        (r'\d+\.?\d*\s*%', 'percentage'),
+        (r'\d+\.?\d*\s*(trilh[oõ]es?|bilh[oõ]es?|milh[oõ]es?)\s+de\s+reais', 'currency_long'),
+        (r'market\s+share.*?\d+', 'market_share'),
+        (r'\d+\s+clientes?', 'customer_count'),
+        (r'crescimento\s+de\s+\d+', 'growth_rate'),
+        (r'receita\s+de\s+R\$\s*[\d,]+', 'revenue'),
+    ]
+
+    # Source markers (accepted)
+    source_markers = [
+        'fonte:', 'segundo', 'de acordo com', 'baseado em', 'conforme',
+        'ibge', 'relatório', 'pesquisa', 'estudo',
+        'estimativa', 'projeção', 'análise',
+        'dados insuficientes', 'sem dados', 'não disponível', 'n/a',
+        'conhecimento de mercado', 'contexto qualitativo'
+    ]
+
+    def check_value(value: Any, path: str = "root"):
+        """Recursively check for unsourced quantitative claims"""
+
+        if isinstance(value, str):
+            for pattern, claim_type in quant_patterns:
+                matches = re.finditer(pattern, value, re.IGNORECASE)
+                for match in matches:
+                    matched_text = match.group()
+
+                    # Check if source marker is present in the same string
+                    has_source = any(marker in value.lower() for marker in source_markers)
+
+                    if not has_source:
+                        violations.append({
+                            "path": path,
+                            "claim": matched_text,
+                            "claim_type": claim_type,
+                            "context": value[:150],
+                            "severity": "CRITICAL" if claim_type in ['currency', 'revenue', 'market_share'] else "WARNING"
+                        })
+
+        elif isinstance(value, dict):
+            for k, v in value.items():
+                check_value(v, f"{path}.{k}")
+
+        elif isinstance(value, list):
+            for i, item in enumerate(value):
+                check_value(item, f"{path}[{i}]")
+
+    check_value(json_output)
+
+    # Calculate severity
+    critical_count = sum(1 for v in violations if v['severity'] == 'CRITICAL')
+    severity = "CRITICAL" if critical_count > 0 else ("WARNING" if len(violations) > 0 else "OK")
+
+    if violations:
+        logger.warning(f"[STRICT SOURCE] Found {len(violations)} violations ({critical_count} critical)")
+        for violation in violations[:5]:
+            logger.warning(f"[STRICT SOURCE] {violation['claim_type']} at {violation['path']}: {violation['claim']}")
+
+    return {
+        "is_valid": severity == "OK",
+        "violations": violations,
+        "severity": severity,
+        "critical_count": critical_count,
+        "warning_count": len(violations) - critical_count
+    }
+
+
 # ============================================================================
 # COST TRACKING
 # ============================================================================

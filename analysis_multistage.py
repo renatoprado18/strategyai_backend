@@ -283,6 +283,12 @@ Extract and structure ALL key facts from the data above into clean JSON.
 7. Customer/user sentiment
 8. Technology stack or business model details
 
+**CRITICAL - SOURCE ATTRIBUTION:**
+- For ALL quantitative claims (currency amounts, percentages, market share, etc.), include the source
+- Format: "R$ X milhões (fonte: Website da empresa)" or "15% crescimento (fonte: Relatório Perplexity)"
+- If no concrete source: Use "Estimativa baseada em [contexto]" or "N/A - dados insuficientes"
+- NEVER fabricate specific numbers without a source
+
 **What to SKIP:**
 - Marketing fluff without substance
 - Vague statements ("growing rapidly" without numbers)
@@ -431,6 +437,11 @@ Current Data:
 
 Generate specific, actionable research queries that would fill the most important gaps.
 
+**CRITICAL - SOURCE ATTRIBUTION:**
+- All follow-up research findings MUST include sources
+- Format quantitative claims as: "R$ X milhões (fonte: Relatório Y)" or "15% (fonte: Perplexity Research)"
+- If no concrete data available: Mark as "Dados insuficientes" or "Estimativa baseada em análise de mercado"
+
 Return JSON:
 
 {{
@@ -504,15 +515,24 @@ async def stage3_strategic_analysis(
     company: str,
     industry: str,
     challenge: Optional[str],
-    extracted_data: Dict[str, Any]
+    extracted_data: Dict[str, Any],
+    enabled_sections: List[str] = None,
+    data_quality_tier: str = "good"
 ) -> Dict[str, Any]:
     """
     Stage 3: Apply strategic frameworks to extracted data
     Model: GPT-4o (expensive but best for frameworks)
     Cost: ~$0.073 per call
+
+    Args:
+        enabled_sections: List of enabled section names based on data quality
+        data_quality_tier: Quality tier (minimal, partial, good, full, legendary)
     """
 
-    logger.info("[STAGE 3] Applying strategic frameworks...")
+    if enabled_sections is None:
+        enabled_sections = ["all"]
+
+    logger.info(f"[STAGE 3] Applying strategic frameworks (tier: {data_quality_tier}, sections: {len(enabled_sections)})")
 
     prompt = f"""# STRATEGIC BUSINESS ANALYSIS
 
@@ -647,7 +667,29 @@ Create 3 scenarios:
     "elevar": ["Factor 1", "..."],
     "criar": ["Factor 1", "..."]
   }},
+"""
 
+    # Conditional TAM/SAM/SOM section based on data quality
+    tam_sam_som_enabled = "all" in enabled_sections or "tam_sam_som" in enabled_sections
+
+    if not tam_sam_som_enabled or data_quality_tier in ["minimal", "partial"]:
+        # Skip TAM/SAM/SOM for low quality data
+        prompt += """
+  "tam_sam_som": {{
+    "status": "dados_insuficientes",
+    "mensagem": "Análise TAM/SAM/SOM requer dados adicionais para evitar estimativas imprecisas",
+    "o_que_fornecer": [
+      "Demonstrações financeiras (últimos 2 anos)",
+      "Faturamento atual da empresa",
+      "Relatórios de mercado ou pesquisa setorial específica"
+    ],
+    "contexto_qualitativo": "Breve descrição do mercado sem números específicos",
+    "proximos_passos": "Forneça dados financeiros para análise quantitativa precisa de mercado acessível."
+  }},
+"""
+    else:
+        # Include full TAM/SAM/SOM section
+        prompt += """
   "tam_sam_som": {{
     // **IMPORTANTE:** Somente preencha com números SE houver dados concretos (demonstrações financeiras, pesquisa de mercado, relatórios setoriais).
     // SE NÃO HOUVER DADOS SUFICIENTES, retorne o formato alternativo abaixo:
@@ -670,7 +712,10 @@ Create 3 scenarios:
     "justificativa": "Explique premissas e cálculos com fontes claras.",
     "fonte_dados": "Cite fonte específica (IBGE, relatório X, documento fornecido) ou descreva premissas"
   }},
+"""
 
+    # Continue with rest of prompt
+    prompt += """
   "posicionamento_competitivo": {{
     "principais_concorrentes": [
       {{
@@ -832,6 +877,7 @@ Create 3 scenarios:
     # HALLUCINATION DETECTION & AUTO-FIX
     # ========================================================================
     from hallucination_detector import validate_market_sizing, detect_company_size, validate_numeric_claims
+    from validation_utils import validate_source_attribution_strict
 
     # Detect company size for validation
     company_size = detect_company_size(extracted_data.get('company_info', {}))
@@ -868,6 +914,14 @@ Create 3 scenarios:
         logger.warning(f"[HALLUCINATION] Found {len(numeric_validation['violations'])} numeric claim violations:")
         for violation in numeric_validation['violations'][:5]:  # Log first 5
             logger.warning(f"[HALLUCINATION] - {violation}")
+
+    # Strict source attribution validation
+    source_validation = validate_source_attribution_strict(strategic_analysis)
+    if not source_validation['is_valid']:
+        logger.warning(f"[SOURCE ATTRIBUTION] Validation failed:")
+        logger.warning(f"[SOURCE ATTRIBUTION] Severity: {source_validation['severity']}")
+        logger.warning(f"[SOURCE ATTRIBUTION] Critical: {source_validation['critical_count']}, Warnings: {source_validation['warning_count']}")
+        # Log violations but don't auto-fix (might be too aggressive)
 
     logger.info(f"[STAGE 3] ✅ Generated strategic analysis with {len(strategic_analysis.get('okrs_propostos', []))} OKRs")
     return strategic_analysis
@@ -932,6 +986,12 @@ Make scenarios vivid and memorable:
 - Check that OKRs are truly measurable
 - Verify Brazilian Portuguese is natural and professional
 
+## 6. **CRITICAL - Preserve Source Attribution**
+- **NEVER remove source markers** from quantitative claims
+- Keep all "(fonte: X)", "(baseado em Y)", "(estimativa Z)" markers INTACT
+- If text says "R$ 100 milhões (fonte: Website)", DO NOT change it to "R$ 100 milhões"
+- Source attribution is MANDATORY for credibility - preserve it at all costs
+
 ---
 
 # OUTPUT FORMAT (JSON ONLY)
@@ -943,12 +1003,14 @@ Return the SAME JSON structure as input, but with polished text.
 - Add new sections
 - Alter numbers/data significantly
 - Make it longer (aim for clarity, not verbosity)
+- **REMOVE SOURCE ATTRIBUTION** - Keep all "(fonte: X)" markers
 
 **DO:**
 - Improve clarity and flow
 - Make language more executive-friendly
 - Ensure actionability
 - Fix any errors or awkwardness
+- **Preserve all source markers and attributions**
 
 Return JSON only. No markdown, no explanations.
 """
@@ -1095,11 +1157,19 @@ Retorne JSON em PORTUGUÊS BRASILEIRO:
 
 **REQUISITOS CRÍTICOS:**
 1. **MÍNIMO 5-7 CONCORRENTES** - Liste TODOS os players relevantes do mercado brasileiro
-2. **FONTE DE DADOS** - Indique se dados vieram de fontes fornecidas ou conhecimento do mercado
-3. **HONESTIDADE** - Se não há dados, escreva "N/A" ou "Estimativa baseada em X"
-4. **PORTUGUÊS** - TODO o output em português brasileiro
-5. **ESPECÍFICO** - Seja específico e acionável, não genérico
-6. **JSON VÁLIDO** - NUNCA use aspas duplas (") dentro de strings. Use aspas simples (') ou parênteses ao invés.
+2. **FONTE DE DADOS OBRIGATÓRIA** - SEMPRE indique a fonte:
+   - "Dados fornecidos (Apify/Perplexity)"
+   - "Conhecimento de mercado brasileiro"
+   - "Estimativa baseada em análise setorial"
+   - "N/A - dados insuficientes"
+3. **ATRIBUIÇÃO QUANTITATIVA** - Para números específicos (market share, crescimento, preços):
+   - SEMPRE inclua fonte: "15% (fonte: Relatório XYZ)" ou "R$ 50/mês (fonte: Website oficial)"
+   - Se estimativa: "~10% (estimativa baseada em market share aproximado)"
+   - Se desconhecido: "N/A - dados não disponíveis"
+4. **HONESTIDADE** - NUNCA fabrique números sem base. Prefira "N/A" a inventar dados
+5. **PORTUGUÊS** - TODO o output em português brasileiro
+6. **ESPECÍFICO** - Seja específico e acionável, não genérico
+7. **JSON VÁLIDO** - NUNCA use aspas duplas (") dentro de strings. Use aspas simples (') ou parênteses ao invés.
    - ERRADO: "Metodologia "própria" da empresa"
    - CORRETO: "Metodologia (própria) da empresa" ou "Metodologia 'própria' da empresa"
 """
@@ -1256,7 +1326,12 @@ Retorne JSON SOMENTE EM PORTUGUÊS BRASILEIRO:
 2. NÃO traduza literalmente termos técnicos - use equivalentes naturais em português
 3. NÃO inclua UMA ÚNICA palavra em inglês
 4. Seja específico, quantitativo e acionável
-5. Cite fontes quando usar dados específicos, ou marque como "Estimativa baseada em análise"
+5. **ATRIBUIÇÃO DE FONTE OBRIGATÓRIA:**
+   - Para números específicos (custos, retornos, probabilidades): SEMPRE cite a base
+   - Formato: "R$ 50 mil (baseado em análise SWOT)" ou "45 dias (estimativa baseada em projetos similares)"
+   - Se estimativa: Seja explícito - "Estimativa baseada em análise de cenários"
+   - Se desconhecido: Use "N/A - requer dados adicionais" ao invés de inventar
+   - NUNCA fabrique números específicos sem base clara nos dados fornecidos
 
 **ESCALA DE PONTUAÇÃO:**
 - Probabilidade: 0.0-1.0 (0% a 100%)
@@ -1372,7 +1447,9 @@ async def generate_multistage_analysis(
 
         # ===== STAGE 3: Strategic frameworks (EXPENSIVE - GPT-4o) =====
         strategic_analysis = await stage3_strategic_analysis(
-            company, industry, challenge, extracted_data
+            company, industry, challenge, extracted_data,
+            enabled_sections=enabled_sections,
+            data_quality_tier=tier
         )
         stages_completed.append("strategic_analysis")
         models_used["stage3_strategy"] = MODEL_STRATEGY
