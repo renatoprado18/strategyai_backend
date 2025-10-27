@@ -195,3 +195,46 @@ class SignupResponse(BaseModel):
     success: bool
     message: Optional[str] = None
     error: Optional[str] = None
+
+
+# AI Editor Models
+
+class EditRequest(BaseModel):
+    """Request to edit a section of a report"""
+    selected_text: str
+    section_path: str
+    instruction: str
+    complexity: Optional[Literal["simple", "complex"]] = None
+
+
+class EditResponse(BaseModel):
+    """Response with suggested edit"""
+    success: bool
+    suggested_edit: Optional[str] = None
+    original_text: Optional[str] = None
+    reasoning: Optional[str] = None
+    model_used: Optional[str] = None
+    complexity: Optional[str] = None
+    cost_estimate: Optional[float] = None
+    error: Optional[str] = None
+
+
+class ApplyEditRequest(BaseModel):
+    """Request to apply an edit to the report"""
+    section_path: str
+    new_text: str
+
+
+class ApplyEditResponse(BaseModel):
+    """Response after applying edit"""
+    success: bool
+    updated_report: Optional[dict] = None
+    edit_count: Optional[int] = None
+    error: Optional[str] = None
+
+
+class RegeneratePDFResponse(BaseModel):
+    """Response after regenerating PDF"""
+    success: bool
+    pdf_url: Optional[str] = None
+    error: Optional[str] = None
