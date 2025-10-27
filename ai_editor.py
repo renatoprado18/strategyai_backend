@@ -122,6 +122,27 @@ async def generate_edit_suggestion(
 
     logger.info(f"[AI EDITOR] Complexity: {complexity}, Model: {model}")
 
+    # Detect if editing an array item (bullet point)
+    is_list_item = '[' in section_context
+
+    # Build formatting instructions based on data type
+    if is_list_item:
+        formatting_instruction = """
+**FORMATTING RULES (LIST ITEM):**
+- Return PLAIN TEXT ONLY (no bullets, no dashes, no formatting)
+- The text will be displayed as a bullet point automatically
+- DO NOT add: •, -, *, or any list markers
+- DO NOT add line breaks within the item
+- Keep it as a single, concise sentence or phrase
+"""
+    else:
+        formatting_instruction = """
+**FORMATTING RULES (PARAGRAPH):**
+- Preserve paragraph structure
+- Maintain line breaks if present
+- Keep any bold/emphasis from original
+"""
+
     # Build prompt
     prompt = f"""You are an expert editor helping improve a strategic business report in Portuguese (Brazilian).
 
@@ -141,6 +162,8 @@ async def generate_edit_suggestion(
 4. Preserve any source citations (fonte:, baseado em, etc.)
 5. Keep the same tone and professionalism as the original
 
+{formatting_instruction}
+
 **OUTPUT FORMAT (JSON ONLY):**
 {{
   "suggested_edit": "Your edited version of the selected text",
@@ -151,7 +174,7 @@ async def generate_edit_suggestion(
 - Output ONLY valid JSON
 - Do NOT change text outside the selected portion
 - Keep source attributions intact
-- Maintain consistent formatting
+- Follow the formatting rules exactly
 """
 
     # Add full report context if available (for complex edits)
@@ -175,6 +198,17 @@ async def generate_edit_suggestion(
 
         # Parse response
         result = json.loads(response_text)
+
+        # Sanitize formatting for list items (remove stray bullets/markers)
+        if is_list_item:
+            suggested_edit = result.get("suggested_edit", "")
+            # Remove leading bullets, dashes, asterisks, and extra whitespace
+            suggested_edit = suggested_edit.strip()
+            # Remove common list markers at the start
+            for marker in ["• ", "- ", "* ", "→ ", "▸ ", "▪ ", "◦ "]:
+                if suggested_edit.startswith(marker):
+                    suggested_edit = suggested_edit[len(marker):].strip()
+            result["suggested_edit"] = suggested_edit
 
         # Calculate cost
         pricing = {
