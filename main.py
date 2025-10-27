@@ -619,14 +619,26 @@ async def get_dashboard_intelligence(
     """
     Get FREE AI-powered dashboard intelligence (Protected Admin endpoint)
 
-    Uses DeepSeek R1 (FREE) to analyze submissions and provide:
-    - Executive summary
-    - Quality trends
-    - Common challenge clustering
-    - High-risk submission alerts
-    - System improvement recommendations
+    DISABLED: All free models hitting 429 rate limits
+    Returns empty response immediately to avoid blocking dashboard
+    """
+    print(f"[DASHBOARD AI] DISABLED - Returning empty intelligence to avoid 429 rate limits")
 
-    Cost: $0.00 (completely free!)
+    # Return empty intelligence structure immediately
+    return {
+        "executive_summary": "Dashboard Intelligence temporariamente desabilitado devido a limites de taxa dos modelos gratuitos.",
+        "quality_trends": None,
+        "common_challenges": [],
+        "high_risk_submissions": [],
+        "system_recommendations": [],
+        "metadata": {
+            "days_analyzed": days,
+            "cost": 0.0,
+            "disabled": True
+        }
+    }
+
+    # OLD CODE (DISABLED):
     """
     try:
         print(f"[DASHBOARD AI] User {current_user['email']} requesting intelligence (last {days} days)")
