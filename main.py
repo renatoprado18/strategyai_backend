@@ -681,6 +681,7 @@ async def get_dashboard_intelligence(
             "success": False,
             "error": str(e)
         }
+    """
 
 
 # Exception handlers
