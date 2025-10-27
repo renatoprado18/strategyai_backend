@@ -900,59 +900,88 @@ Para concorrentes NÃO presentes nos dados fornecidos, marque campos como "Estim
 Retorne JSON em PORTUGUÊS BRASILEIRO:
 
 {{
-  "competitive_matrix": {{
-    "competitors": ["{company}", "Concorrente 1 REAL", "Concorrente 2 REAL", "Concorrente 3 REAL", "...pelo menos 5-7 total"],
-    "features": ["Preço", "Tecnologia", "Market Share", "Pontos Fortes", "Pontos Fracos", "Taxa de Crescimento", "Financiamento"],
-    "matrix": [
-      ["{company}", "Valor", "Valor", "Valor", "..."],
-      ["Concorrente 1", "Valor (ou 'N/A se não disponível')", "Valor", "Valor", "..."],
-      ["Concorrente 2", "..."]
-    ],
-    "fonte_dados": "Marque quais concorrentes vieram dos dados fornecidos vs conhecimento do mercado"
-  }},
+  "analise_competitiva_detalhada": [
+    {{
+      "empresa": "{company}",
+      "posicionamento": "Mid-market / Premium / Budget",
+      "market_share_estimado": "X% (fonte: relatório Y ou 'Estimativa de mercado')",
+      "pontos_fortes": ["Ponto forte 1 específico", "Ponto forte 2"],
+      "pontos_fracos": ["Ponto fraco 1", "Ponto fraco 2"],
+      "preco_medio": "R$ X/mês ou taxa Y% (ou 'N/A')",
+      "tecnologia_destaque": "Descrição da tech stack ou inovação",
+      "crescimento_anual": "X% ao ano (fonte ou 'Estimativa')",
+      "fonte_dados": "Dados fornecidos / Conhecimento de mercado / Estimativa"
+    }},
+    {{
+      "empresa": "Cielo",
+      "posicionamento": "...",
+      "...": "..."
+    }},
+    {{
+      "empresa": "PagSeguro",
+      "...": "..."
+    }},
+    {{
+      "empresa": "GetNet",
+      "...": "..."
+    }},
+    {{
+      "empresa": "Mercado Pago",
+      "...": "..."
+    }},
+    {{
+      "empresa": "SumUp",
+      "...": "..."
+    }},
+    {{
+      "empresa": "Rede",
+      "...": "..."
+    }},
+    "...pelo menos 5-7 concorrentes REAIS do mercado brasileiro"
+  ],
 
-  "positioning_map": {{
-    "x_axis": "Price (Low to High)",
-    "y_axis": "Features (Basic to Advanced)",
-    "positions": [
-      {{"company": "{company}", "x": 5, "y": 7}},
-      {{"company": "Competitor A", "x": 7, "y": 8}},
-      {{"company": "Competitor B", "x": 3, "y": 5}}
+  "mapa_posicionamento": {{
+    "eixo_x": "Preço (Baixo → Alto)",
+    "eixo_y": "Recursos/Funcionalidades (Básico → Avançado)",
+    "posicoes": [
+      {{"empresa": "{company}", "x": 5, "y": 7}},
+      {{"empresa": "Cielo", "x": 8, "y": 8}},
+      {{"empresa": "PagSeguro", "x": 5, "y": 6}}
     ],
-    "quadrants": {{
-      "low_price_basic": ["Companies here"],
-      "low_price_advanced": ["Companies here"],
-      "high_price_basic": ["Companies here"],
-      "high_price_advanced": ["Companies here"]
+    "quadrantes": {{
+      "preco_baixo_basico": ["Empresas neste quadrante"],
+      "preco_baixo_avancado": ["Empresas neste quadrante"],
+      "preco_alto_basico": ["Empresas neste quadrante"],
+      "preco_alto_avancado": ["Empresas neste quadrante"]
     }}
   }},
 
-  "swot_per_competitor": [
+  "swot_por_concorrente": [
     {{
-      "company": "Competitor A",
-      "strengths": ["Strength 1", "Strength 2"],
-      "weaknesses": ["Weakness 1"],
-      "opportunities": ["Opportunity for them"],
-      "threats": ["Threat they face"]
+      "empresa": "Concorrente A",
+      "forcas": ["Força 1", "Força 2"],
+      "fraquezas": ["Fraqueza 1"],
+      "oportunidades": ["Oportunidade para eles"],
+      "ameacas": ["Ameaça que enfrentam"]
     }}
   ],
 
-  "competitive_gaps": [
+  "gaps_competitivos": [
     {{
-      "gap": "Market gap description",
-      "opportunity_for_company": "How {company} can exploit this",
-      "estimated_market_size": "R$ X million",
-      "difficulty": "Low/Medium/High"
+      "gap": "Descrição da lacuna de mercado",
+      "oportunidade_para_empresa": "Como {company} pode explorar isso",
+      "tamanho_mercado_estimado": "R$ X milhões (fonte ou 'Estimativa')",
+      "dificuldade": "Baixa/Média/Alta"
     }}
   ],
 
-  "competitive_threats": [
+  "ameacas_competitivas": [
     {{
-      "threat": "Threat description",
-      "source": "Which competitor",
-      "timeline": "When it's coming",
-      "impact": "High/Medium/Low",
-      "mitigation": "How to defend"
+      "ameaca": "Descrição da ameaça",
+      "origem": "Qual concorrente",
+      "prazo": "Quando está chegando",
+      "impacto": "Alto/Médio/Baixo",
+      "mitigacao": "Como se defender"
     }}
   ]
 }}
@@ -977,7 +1006,8 @@ Retorne JSON em PORTUGUÊS BRASILEIRO:
     )
 
     competitive_intel = json.loads(response)
-    logger.info(f"[STAGE 4] ✅ Generated competitive matrix with {len(competitive_intel.get('competitive_matrix', {}).get('competitors', []))} competitors")
+    num_competitors = len(competitive_intel.get('analise_competitiva_detalhada', []))
+    logger.info(f"[STAGE 4] ✅ Generated competitive matrix with {num_competitors} competitors")
     return competitive_intel
 
 
