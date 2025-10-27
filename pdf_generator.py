@@ -1,11 +1,14 @@
 """
 Production-Grade PDF Report Generator using fpdf2
 Pure Python implementation - no system dependencies
+
+BACKWARD COMPATIBLE: Handles both old (flat) and new (4-part nested) report structures
 """
 
 from fpdf import FPDF
 from datetime import datetime
 from typing import Dict, Any, List
+from report_adapter import adapt_to_legacy, is_new_structure, get_report_metadata
 
 
 class ReportPDF(FPDF):
@@ -111,9 +114,18 @@ def generate_pdf_from_report(
     """
     Generate a production-grade PDF from report JSON using fpdf2
 
+    BACKWARD COMPATIBLE: Handles both old (flat) and new (4-part nested) structures
+
     Returns:
         PDF file content as bytes
     """
+
+    # Adapt report structure if necessary (handles both old and new formats)
+    metadata = get_report_metadata(report_json)
+    print(f"[PDF Generator] Report structure: {metadata['structure']} ({metadata['version']})")
+
+    # Convert to legacy format for rendering
+    report_json = adapt_to_legacy(report_json)
 
     company = submission_data.get('company', 'Empresa')
     industry = submission_data.get('industry', '')
