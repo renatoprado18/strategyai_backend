@@ -237,32 +237,47 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 ## Cost Optimization
 
-**Highly optimized pipeline costs only ~$0.08 per full analysis!**
+**Smart pipeline: Premium models for client work, budget for backend**
 
-| Stage | Model | Cost per Analysis |
-|-------|-------|-------------------|
-| Stage 1: Extraction | Gemini 2.5 Flash | $0.002 |
-| Stage 2: Gap Analysis | Gemini 2.5 Flash | $0.003 |
-| Stage 3: Strategy | GPT-4o-mini | $0.007 |
-| Stage 4: Competitive | Gemini 2.5 Flash | $0.003 |
-| Stage 5: Risk Scoring | Gemini 2.5 Flash | $0.003 |
-| Stage 6: Polish | Gemini 2.5 Flash | $0.003 |
-| **Total Analysis** | - | **$0.021** |
-| Data Collection (Apify) | External API | $0.06 (amortized) |
-| **Grand Total** | - | **~$0.08** ✅ |
+Analysis costs **~$0.41 per full analysis** with PREMIUM quality!
+
+| Stage | Model | Type | Cost per Analysis |
+|-------|-------|------|-------------------|
+| Stage 1: Extraction | Gemini 2.5 Flash | Backend | $0.002 |
+| Stage 2: Gap Analysis | Gemini 2.5 Flash | Backend | $0.003 |
+| Stage 3: Strategy | **GPT-4o** | **Client-Facing** ⭐ | $0.115 |
+| Stage 4: Competitive | **Gemini 2.5 Pro** | **Important** ⭐ | $0.046 |
+| Stage 5: Risk Scoring | **Claude 3.5 Sonnet** | **Strategic** ⭐ | $0.120 |
+| Stage 6: Polish | **Claude 3.5 Sonnet** | **Client-Facing** ⭐ | $0.120 |
+| **Total Analysis** | - | - | **$0.406** |
+| Data Collection (Apify) | External API | Data | $0.06 (amortized) |
+| **Grand Total** | - | - | **~$0.47** ✅ |
+
+**Philosophy**:
+- 🎯 **Client-facing stages**: Use BEST models (GPT-4o, Claude Sonnet, Gemini Pro)
+- 💰 **Backend stages**: Use budget models (Gemini Flash)
+- ✅ **Result**: Premium quality where it matters, cost-effective overall
 
 **Cost Breakdown:**
-- 85% of cost: Data collection (Apify/Perplexity APIs)
-- 15% of cost: AI analysis (6 stages)
-- **Total**: Under $0.10 per analysis
+- 1% - Backend extraction/gaps (Gemini Flash)
+- 28% - Strategic analysis (GPT-4o)
+- 11% - Competitive intel (Gemini Pro)
+- 29% - Risk scoring (Claude Sonnet)
+- 29% - Executive polish (Claude Sonnet)
+- 2% - Misc/overhead
+
+**Why This Matters:**
+- Client sees GPT-4o + Claude Sonnet quality ✨
+- You pay ~$0.41 (well under $1 target!)
+- Competitive advantage: Others using GPT-4o everywhere pay $2-3+ per analysis
 
 Additional features:
-- Chat: $0.002-0.01 per conversation
-- Editing: $0.01-0.05 per edit
-- Dashboard Intelligence: $0.02-0.08 per insight
+- Chat: $0.01-0.05 per conversation (Claude Haiku)
+- Editing: $0.10-0.20 per edit (Claude Sonnet - client-facing!)
+- Dashboard Intelligence: $0.01 per insight (Gemini Flash - internal)
 
-**Quality**: 94%+ of premium models at 10% of the cost!
-**Optimization**: Use Gemini 2.5 Flash (extremely cheap, excellent quality) + GPT-4o-mini for strategy
+**Quality**: 100% premium for client deliverables!
+**Strategy**: Smart model selection - right model for each job!
 
 ## Troubleshooting
 

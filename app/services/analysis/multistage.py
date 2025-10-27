@@ -35,14 +35,29 @@ load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# Model selection for each stage - OPTIMIZED FOR COST (<$0.15 per analysis)
-# Original cost: ~$0.30/analysis | Optimized cost: ~$0.08/analysis (73% savings!)
-MODEL_EXTRACTION = "google/gemini-2.5-flash-preview-09-2025"  # CHEAP: $0.075/M in, $0.30/M out
-MODEL_GAP_ANALYSIS = "google/gemini-2.5-flash-preview-09-2025"  # CHEAP
-MODEL_STRATEGY = "openai/gpt-4o-mini"  # OPTIMIZED: $0.15/M in, $0.60/M out (was gpt-4o: 15x cheaper, 94% quality)
-MODEL_COMPETITIVE = "google/gemini-2.5-flash-preview-09-2025"  # OPTIMIZED: Use Flash instead of Pro (93% savings, great quality)
-MODEL_RISK_SCORING = "google/gemini-2.5-flash-preview-09-2025"  # OPTIMIZED: Flash instead of Claude Sonnet (99% savings!)
-MODEL_POLISH = "google/gemini-2.5-flash-preview-09-2025"  # OPTIMIZED: Flash instead of Haiku (76% savings)
+# Smart Model Selection - Use the RIGHT model for each job!
+# Client-facing stages use PREMIUM models (quality matters!)
+# Backend stages use BUDGET models (cost-effective)
+from app.core.model_config import get_model_for_stage, MODEL_SELECTION, get_stage_config
+from app.utils.logger import AnalysisLogger, log_model_selection
+
+# Load models from smart configuration
+MODEL_EXTRACTION = get_model_for_stage("extraction")  # Budget: Gemini Flash
+MODEL_GAP_ANALYSIS = get_model_for_stage("gap_analysis")  # Budget: Gemini Flash
+MODEL_STRATEGY = get_model_for_stage("strategy")  # PREMIUM: GPT-4o (CLIENT-FACING!)
+MODEL_COMPETITIVE = get_model_for_stage("competitive")  # PREMIUM: Gemini Pro (important!)
+MODEL_RISK_SCORING = get_model_for_stage("risk_scoring")  # PREMIUM: Claude Sonnet (reasoning!)
+MODEL_POLISH = get_model_for_stage("polish")  # PREMIUM: Claude Sonnet (CLIENT-FACING!)
+
+# Log model selections on import
+for stage in ["extraction", "gap_analysis", "strategy", "competitive", "risk_scoring", "polish"]:
+    config = get_stage_config(stage)
+    log_model_selection(
+        stage=stage,
+        task=config.get("task_type", "unknown").value if hasattr(config.get("task_type"), "value") else str(config.get("task_type")),
+        model=config.get("primary_model", "unknown"),
+        reason=config.get("reason", "")
+    )
 
 TIMEOUT = 120.0
 MAX_RETRIES = 3  # Maximum retry attempts per stage

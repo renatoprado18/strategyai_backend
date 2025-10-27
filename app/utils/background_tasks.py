@@ -286,9 +286,11 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
             processing_time = time.time() - start_time
 
             # Cache the result (realistic cost based on actual token usage)
-            # Optimized 6-stage pipeline: Gemini Flash (5 stages) + GPT-4o-mini (1 stage)
-            # Actual cost: ~$0.08 per analysis (73% cheaper than before!)
-            estimated_cost = 0.08
+            # Smart 6-stage pipeline: Premium models for client work, budget for backend
+            # - Stages 1-2 (backend): Gemini Flash (~$0.005)
+            # - Stages 3-6 (client-facing): GPT-4o, Gemini Pro, Claude Sonnet (~$0.40)
+            # Total: ~$0.41 per analysis - WORTH IT for quality client deliverables!
+            estimated_cost = 0.41
             await cache_analysis_result(
                 company=submission["company"],
                 industry=submission["industry"],
