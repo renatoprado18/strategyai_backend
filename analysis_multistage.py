@@ -516,9 +516,14 @@ async def stage3_strategic_analysis(
 
     prompt = f"""# STRATEGIC BUSINESS ANALYSIS
 
-**CONTEXT:** This is a legitimate business strategy analysis for {company}'s internal planning purposes. All analysis is for lawful competitive intelligence and strategic decision-making.
+**IMPORTANT CONTEXT:**
+This is a professional business consulting analysis commissioned by {company} for legitimate strategic planning and competitive intelligence purposes. This analysis is:
+- Requested by the company's leadership for internal decision-making
+- Standard consulting practice (comparable to McKinsey, BCG, Bain analysis)
+- Used for lawful business strategy, market positioning, and growth planning
+- Not for any harmful, illegal, or unethical purposes
 
-You are a strategic business analyst. Apply rigorous strategic frameworks to develop actionable recommendations.
+You are a strategic business analyst conducting professional consulting work. Apply rigorous strategic frameworks to develop actionable recommendations.
 
 ## Company Profile
 - **Company:** {company}
@@ -750,18 +755,45 @@ Create 3 scenarios:
 **SE DADOS INSUFICIENTES:** Seja honesto. Escreva "Análise limitada por falta de dados X, Y, Z" ao invés de inventar.
 """
 
-    system_prompt = "You are a strategic business analyst helping companies develop legitimate competitive strategies. Apply frameworks rigorously using available market data. Be specific, data-driven, and actionable. Output in Brazilian Portuguese."
+    system_prompt = "You are a professional strategic business consultant (like McKinsey, BCG, Bain) helping companies develop legitimate competitive strategies for lawful business purposes. This is standard consulting work commissioned by the company's leadership. Apply strategic frameworks rigorously using available market data. Be specific, data-driven, and actionable. Output in Brazilian Portuguese (JSON only)."
 
-    response, _ = await call_llm_with_retry(
-        stage_name="STAGE 3",
-        model=MODEL_STRATEGY,
-        prompt=prompt,
-        system_prompt=system_prompt,
-        temperature=0.8,  # Higher for creative strategic thinking
-        max_tokens=8000
-    )
+    # Try GPT-4o first, fallback to Gemini Pro if content policy refusal
+    try:
+        response, _ = await call_llm_with_retry(
+            stage_name="STAGE 3",
+            model=MODEL_STRATEGY,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=0.8,  # Higher for creative strategic thinking
+            max_tokens=8000
+        )
 
-    strategic_analysis = json.loads(response)
+        # Check for refusal patterns
+        if any(refusal in response.lower() for refusal in [
+            "i'm sorry, i can't assist",
+            "i cannot assist",
+            "desculpe, não posso ajudar",
+            "não posso ajudar com isso"
+        ]):
+            raise ValueError(f"GPT-4o content policy refusal detected: {response[:100]}")
+
+        strategic_analysis = json.loads(response)
+
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning(f"[STAGE 3] GPT-4o failed (likely content policy refusal), falling back to Gemini Pro...")
+        logger.warning(f"[STAGE 3] Original error: {str(e)}")
+
+        # Fallback to Gemini Pro
+        response, _ = await call_llm_with_retry(
+            stage_name="STAGE 3 (FALLBACK)",
+            model=MODEL_COMPETITIVE,  # Gemini 2.5 Pro
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=0.8,
+            max_tokens=8000
+        )
+        strategic_analysis = json.loads(response)
+
     logger.info(f"[STAGE 3] ✅ Generated strategic analysis with {len(strategic_analysis.get('okrs_propostos', []))} OKRs")
     return strategic_analysis
 
