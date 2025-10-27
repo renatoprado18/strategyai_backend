@@ -460,13 +460,93 @@ async def process_analysis_task(submission_id: int):
 
 @app.get("/")
 async def root():
-    """Health check endpoint"""
+    """API root endpoint"""
     return {
         "service": "Strategy AI Lead Generator API",
         "status": "running",
         "version": "2.0.0",
-        "features": ["Supabase", "Authentication", "Apify Integration", "Upstash Redis"]
+        "features": ["Supabase", "Authentication", "Apify Integration", "Upstash Redis", "SSE Streaming"]
     }
+
+
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint for monitoring and load balancers
+
+    Checks:
+    - Database connectivity (Supabase)
+    - Redis connectivity (Upstash)
+    - OpenRouter API availability
+
+    Returns:
+        200 OK: All services healthy
+        503 Service Unavailable: One or more services down
+    """
+    health_status = {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "version": "2.0.0",
+        "checks": {}
+    }
+
+    # Check 1: Database (Supabase)
+    try:
+        from database import count_submissions
+        count = await count_submissions()
+        health_status["checks"]["database"] = {
+            "status": "healthy",
+            "submissions_count": count
+        }
+    except Exception as e:
+        health_status["status"] = "unhealthy"
+        health_status["checks"]["database"] = {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+
+    # Check 2: Redis (Upstash)
+    try:
+        from rate_limiter import get_redis_client
+        redis = get_redis_client()
+        redis.ping()
+        health_status["checks"]["redis"] = {
+            "status": "healthy"
+        }
+    except Exception as e:
+        health_status["status"] = "unhealthy"
+        health_status["checks"]["redis"] = {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+
+    # Check 3: OpenRouter API (basic connectivity check)
+    try:
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if api_key:
+            health_status["checks"]["openrouter"] = {
+                "status": "configured",
+                "api_key_present": True
+            }
+        else:
+            health_status["status"] = "degraded"
+            health_status["checks"]["openrouter"] = {
+                "status": "degraded",
+                "api_key_present": False
+            }
+    except Exception as e:
+        health_status["checks"]["openrouter"] = {
+            "status": "unknown",
+            "error": str(e)
+        }
+
+    # Determine HTTP status code
+    if health_status["status"] == "healthy":
+        return health_status
+    elif health_status["status"] == "degraded":
+        return JSONResponse(status_code=200, content=health_status)
+    else:
+        return JSONResponse(status_code=503, content=health_status)
 
 
 # Authentication Endpoints

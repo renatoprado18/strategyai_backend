@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Read(//c/Users/pradord/Documents/Projects/rfap_landing/components/**)"
+      "Read(//c/Users/pradord/Documents/Projects/rfap_landing/components/**)",
+      "Read(//c/Users/pradord/Documents/Projects/rfap_landing/**)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
