@@ -4,6 +4,8 @@ AI Chat System for Strategic Analysis Reports
 Allows admins to ask questions about generated reports to verify accuracy,
 understand AI reasoning, and get clarifications.
 
+Uses OpenRouter API (same as main analysis) for consistency and cost optimization.
+
 System Prompt Context:
 - Full access to company submission data
 - Full access to generated report JSON
@@ -13,11 +15,25 @@ System Prompt Context:
 - Can suggest improvements
 """
 
-import anthropic
+import httpx
 import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 import json
+from dotenv import load_dotenv
+
+load_dotenv()
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Model mapping for chat (OpenRouter model IDs)
+CHAT_MODELS = {
+    "haiku": "anthropic/claude-3.5-haiku-20241022",  # Fast & cheap
+    "sonnet": "anthropic/claude-3.5-sonnet-20241022",  # High quality
+}
+
+TIMEOUT = 60.0
 
 
 def create_chat_system_prompt(
@@ -104,7 +120,7 @@ async def send_chat_message(
     data_quality: Optional[Dict[str, Any]],
     chat_history: List[Dict[str, str]],
     user_message: str,
-    model: str = "claude-3-5-haiku-20241022"
+    model: str = "haiku"
 ) -> Dict[str, Any]:
     """
     Send a chat message and get AI response
@@ -115,7 +131,7 @@ async def send_chat_message(
         data_quality: Data quality metrics
         chat_history: Previous messages [{"role": "user"|"assistant", "content": "..."}]
         user_message: New message from user
-        model: Claude model to use (haiku for speed/cost, sonnet for quality)
+        model: "haiku" (fast/cheap) or "sonnet" (high quality)
 
     Returns:
         {
@@ -127,43 +143,59 @@ async def send_chat_message(
     """
 
     try:
-        # Initialize Anthropic client
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        # Get OpenRouter model ID
+        openrouter_model = CHAT_MODELS.get(model, CHAT_MODELS["haiku"])
 
         # Create system prompt with full context
         system_prompt = create_chat_system_prompt(submission_data, report_data, data_quality)
 
-        # Build messages array (history + new message)
-        messages = chat_history + [{"role": "user", "content": user_message}]
+        # Build messages array (system + history + new message)
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(chat_history)
+        messages.append({"role": "user", "content": user_message})
 
-        # Call Claude API
-        response = client.messages.create(
-            model=model,
-            max_tokens=2000,
-            temperature=0.7,
-            system=system_prompt,
-            messages=messages
-        )
-
-        # Extract response
-        assistant_message = response.content[0].text
-
-        # Calculate approximate tokens (Claude API doesn't return token count directly)
-        # Rough estimate: 1 token ≈ 4 characters
-        tokens_used = len(system_prompt + user_message + assistant_message) // 4
-
-        return {
-            "message": assistant_message,
-            "model_used": model,
-            "tokens_used": tokens_used,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "success": True
+        # Prepare request
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://strategy-ai.com",
+            "X-Title": "Strategy AI - Chat System",
         }
 
-    except anthropic.APIError as e:
-        print(f"[AI CHAT ERROR] Anthropic API error: {e}")
+        payload = {
+            "model": openrouter_model,
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 2000,
+        }
+
+        # Call OpenRouter API
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            response = await client.post(OPENROUTER_URL, headers=headers, json=payload)
+            response.raise_for_status()
+
+            data = response.json()
+
+            if "choices" in data and len(data["choices"]) > 0:
+                assistant_message = data["choices"][0]["message"]["content"].strip()
+
+                # Calculate approximate tokens
+                tokens_used = data.get("usage", {}).get("total_tokens", 0)
+
+                return {
+                    "message": assistant_message,
+                    "model_used": openrouter_model,
+                    "tokens_used": tokens_used,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "success": True
+                }
+            else:
+                raise Exception("No response from OpenRouter")
+
+    except httpx.HTTPStatusError as e:
+        print(f"[AI CHAT ERROR] OpenRouter HTTP error: {e.response.status_code} - {e.response.text}")
         return {
-            "message": f"Error calling AI: {str(e)}",
+            "message": f"Error calling AI: HTTP {e.response.status_code}",
             "model_used": model,
             "tokens_used": 0,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -254,7 +286,8 @@ if __name__ == "__main__":
             report_data=test_report,
             data_quality=test_quality,
             chat_history=[],
-            user_message="Por que você recomendou focar em B2B?"
+            user_message="Por que você recomendou focar em B2B?",
+            model="haiku"
         )
 
         print(f"AI Response: {result['message']}")
