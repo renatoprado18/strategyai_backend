@@ -569,6 +569,58 @@ async def get_submissions(current_user: dict = RequireAuth):
         }
 
 
+@app.get("/api/admin/submissions/{submission_id}/export-pdf")
+async def export_submission_pdf(
+    submission_id: int,
+    current_user: dict = RequireAuth,
+):
+    """
+    Export submission report as production-grade PDF (Protected Admin endpoint)
+
+    Requires valid JWT token in Authorization header
+    Returns PDF file with proper text rendering, spacing, and page breaks
+    """
+    try:
+        from fastapi.responses import Response
+        from pdf_generator import generate_pdf_from_report
+
+        print(f"[AUTH] User {current_user['email']} exporting PDF for submission {submission_id}")
+
+        # Get submission
+        submission = await get_submission(submission_id)
+        if not submission:
+            return {"success": False, "error": f"Submission {submission_id} not found"}
+
+        if not submission.get('report_json'):
+            return {"success": False, "error": "Report not yet generated"}
+
+        # Parse report JSON
+        try:
+            report_data = json.loads(submission['report_json'])
+        except json.JSONDecodeError:
+            return {"success": False, "error": "Invalid report JSON"}
+
+        # Generate PDF
+        pdf_bytes = generate_pdf_from_report(submission, report_data)
+
+        # Return PDF file
+        filename = f"relatorio-estrategico-{submission['company'].replace(' ', '-')}-{datetime.now().strftime('%Y-%m-%d')}.pdf"
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
+
+    except Exception as e:
+        print(f"[ERROR] PDF export error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
 @app.post("/api/admin/reprocess/{submission_id}", response_model=ReprocessResponse)
 async def reprocess_submission(
     submission_id: int,
