@@ -10,12 +10,15 @@ import re
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
+# Import comprehensive prompt injection sanitization
+from prompt_injection_sanitizer import sanitize_for_prompt, neutralize_injection_patterns
+
 logger = logging.getLogger(__name__)
 
 
 def sanitize_research_data(data: str, max_length: int = 3000) -> str:
     """
-    Sanitize Perplexity research data to prevent content filter triggers
+    Sanitize Perplexity research data with comprehensive injection prevention
 
     Args:
         data: Raw research text from Perplexity
@@ -27,24 +30,18 @@ def sanitize_research_data(data: str, max_length: int = 3000) -> str:
     if not data:
         return ""
 
-    # Remove URLs (major spam trigger)
-    data = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '[URL]', data)
+    # Use comprehensive sanitization (includes HTML stripping, code block removal,
+    # injection pattern detection, URL removal, and special character escaping)
+    sanitized = sanitize_for_prompt(
+        data,
+        max_length=max_length,
+        remove_urls_flag=True,
+        strict_mode=True  # Neutralize injection patterns
+    )
 
-    # Remove email addresses
-    data = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '[EMAIL]', data)
+    logger.info(f"[PERPLEXITY] Sanitized: {len(data)} → {len(sanitized)} chars")
 
-    # Remove excessive special characters
-    data = re.sub(r'[^\w\s\.,!?;:()\-\'\"%\$€£¥R]', '', data)
-
-    # Remove multiple consecutive spaces/newlines
-    data = re.sub(r'\s+', ' ', data)
-    data = re.sub(r'\n+', '\n', data)
-
-    # Truncate if too long (with ellipsis)
-    if len(data) > max_length:
-        data = data[:max_length] + "... [truncated for brevity]"
-
-    return data.strip()
+    return sanitized
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"

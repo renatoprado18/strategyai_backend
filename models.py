@@ -6,6 +6,9 @@ from typing import Optional, Literal
 from datetime import datetime
 from enum import Enum
 
+# Import prompt injection sanitization
+from prompt_injection_sanitizer import validate_url, detect_injection_patterns
+
 
 class IndustryEnum(str, Enum):
     """Industry options"""
@@ -50,6 +53,13 @@ class SubmissionCreate(BaseModel):
     def validate_challenge_length(cls, v: Optional[str]) -> Optional[str]:
         if v and len(v) > 200:
             raise ValueError('Challenge must be maximum 200 characters')
+
+        # Check for prompt injection patterns
+        if v:
+            detected_patterns = detect_injection_patterns(v)
+            if detected_patterns:
+                raise ValueError('Challenge contains suspicious content')
+
         return v
 
     @field_validator('email')
@@ -62,13 +72,16 @@ class SubmissionCreate(BaseModel):
             raise ValueError('Please use a corporate email address')
         return v
 
-    @field_validator('website')
+    @field_validator('website', 'linkedin_company', 'linkedin_founder')
     @classmethod
-    def validate_website(cls, v: Optional[str]) -> Optional[str]:
-        """Validate website URL format"""
+    def validate_url_fields(cls, v: Optional[str]) -> Optional[str]:
+        """Validate URL format and check for dangerous schemes"""
         if v and v.strip():
-            if not v.startswith(('http://', 'https://')):
-                v = f'https://{v}'
+            try:
+                # Use comprehensive URL validation (blocks javascript:, data:, file:, etc.)
+                v = validate_url(v)
+            except ValueError as e:
+                raise ValueError(f'Invalid URL: {str(e)}')
         return v if v and v.strip() else None
 
 
@@ -205,6 +218,23 @@ class EditRequest(BaseModel):
     section_path: str
     instruction: str
     complexity: Optional[Literal["simple", "complex"]] = None
+
+    @field_validator('instruction')
+    @classmethod
+    def validate_instruction_field(cls, v: str) -> str:
+        """Validate instruction for prompt injection patterns"""
+        if not v or len(v.strip()) == 0:
+            raise ValueError('Instruction cannot be empty')
+
+        if len(v) > 500:
+            raise ValueError('Instruction too long (max 500 characters)')
+
+        # Check for injection patterns
+        detected_patterns = detect_injection_patterns(v)
+        if detected_patterns:
+            raise ValueError('Instruction contains suspicious content')
+
+        return v
 
 
 class EditResponse(BaseModel):

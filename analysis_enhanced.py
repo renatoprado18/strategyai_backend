@@ -11,6 +11,9 @@ from datetime import datetime
 import os
 from dotenv import load_dotenv
 
+# Import prompt injection sanitization
+from prompt_injection_sanitizer import sanitize_for_prompt, wrap_with_boundaries
+
 logger = logging.getLogger(__name__)
 
 load_dotenv()
@@ -41,92 +44,107 @@ def build_enhanced_prompt(
     if apify_data and apify_data.get("apify_enabled"):
         enrichment_context = "\n\n## DADOS DE MERCADO E PESQUISA (FONTES PÚBLICAS)\n\n"
 
-        # Core website data
+        # Core website data (SANITIZED)
         if "website_data" in apify_data:
             web = apify_data["website_data"]
             if web.get('scraped_successfully'):
-                enrichment_context += f"**Website da Empresa:**\n{web.get('content_summary', 'N/A')}\n\n"
+                safe_content = sanitize_for_prompt(web.get('content_summary', 'N/A'), max_length=2000)
+                enrichment_context += f"**Website da Empresa:**\n{safe_content}\n\n"
 
-        # LinkedIn company insights
+        # LinkedIn company insights (SANITIZED)
         if "linkedin_company_data" in apify_data:
             linkedin = apify_data["linkedin_company_data"]
             if linkedin.get('scraped_successfully'):
-                enrichment_context += f"**LinkedIn da Empresa:**\n{linkedin.get('company_description', 'N/A')}\n"
-                enrichment_context += f"Insights: {linkedin.get('insights', 'N/A')}\n\n"
+                safe_desc = sanitize_for_prompt(linkedin.get('company_description', 'N/A'), max_length=1000)
+                safe_insights = sanitize_for_prompt(linkedin.get('insights', 'N/A'), max_length=1000)
+                enrichment_context += f"**LinkedIn da Empresa:**\n{safe_desc}\n"
+                enrichment_context += f"Insights: {safe_insights}\n\n"
 
-        # LinkedIn founder insights
+        # LinkedIn founder insights (SANITIZED)
         if "linkedin_founder_data" in apify_data:
             founder = apify_data["linkedin_founder_data"]
             if founder.get('scraped_successfully'):
-                enrichment_context += f"**LinkedIn do Fundador/CEO:**\n{founder.get('profile_description', 'N/A')}\n"
-                enrichment_context += f"Insights de Liderança: {founder.get('insights', 'N/A')}\n\n"
+                safe_profile = sanitize_for_prompt(founder.get('profile_description', 'N/A'), max_length=1000)
+                safe_leadership = sanitize_for_prompt(founder.get('insights', 'N/A'), max_length=1000)
+                enrichment_context += f"**LinkedIn do Fundador/CEO:**\n{safe_profile}\n"
+                enrichment_context += f"Insights de Liderança: {safe_leadership}\n\n"
 
-        # News and media coverage
+        # News and media coverage (SANITIZED)
         if "news_data" in apify_data:
             news = apify_data["news_data"]
             if news.get('researched_successfully'):
-                enrichment_context += f"**Notícias e Cobertura de Mídia:**\n{news.get('news_summary', 'N/A')}\n"
+                safe_news = sanitize_for_prompt(news.get('news_summary', 'N/A'), max_length=1500)
+                enrichment_context += f"**Notícias e Cobertura de Mídia:**\n{safe_news}\n"
                 enrichment_context += f"Total de artigos encontrados: {news.get('articles_found', 0)}\n\n"
 
-        # Social media presence and sentiment
+        # Social media presence and sentiment (SANITIZED)
         if "social_media_data" in apify_data:
             social = apify_data["social_media_data"]
             if social.get('researched_successfully'):
-                enrichment_context += f"**Presença em Redes Sociais e Sentimento Público:**\n{social.get('public_sentiment', 'N/A')}\n"
+                safe_sentiment = sanitize_for_prompt(social.get('public_sentiment', 'N/A'), max_length=1500)
+                enrichment_context += f"**Presença em Redes Sociais e Sentimento Público:**\n{safe_sentiment}\n"
                 enrichment_context += f"Total de menções encontradas: {social.get('mentions_found', 0)}\n\n"
 
-        # Competitor analysis
+        # Competitor analysis (SANITIZED)
         if "competitor_data" in apify_data:
             comp = apify_data["competitor_data"]
             if comp.get('researched_successfully'):
-                enrichment_context += f"**Análise de Concorrentes:**\n{comp.get('market_insights', 'N/A')}\n\n"
+                safe_competitors = sanitize_for_prompt(comp.get('market_insights', 'N/A'), max_length=2000)
+                enrichment_context += f"**Análise de Concorrentes:**\n{safe_competitors}\n\n"
 
-        # Industry trends
+        # Industry trends (SANITIZED)
         if "industry_trends" in apify_data:
             trends = apify_data["industry_trends"]
             if trends.get('researched_successfully'):
-                enrichment_context += f"**Tendências do Setor ({industry}):**\n{trends.get('summary', 'N/A')}\n\n"
+                safe_trends = sanitize_for_prompt(trends.get('summary', 'N/A'), max_length=2000)
+                enrichment_context += f"**Tendências do Setor ({industry}):**\n{safe_trends}\n\n"
 
-        # Company enrichment
+        # Company enrichment (SANITIZED)
         if "company_enrichment" in apify_data:
             enrich = apify_data["company_enrichment"]
             if enrich.get('enriched_successfully'):
-                enrichment_context += f"**Dados Adicionais da Empresa:**\n{enrich.get('summary', 'N/A')}\n\n"
+                safe_enrichment = sanitize_for_prompt(enrich.get('summary', 'N/A'), max_length=1500)
+                enrichment_context += f"**Dados Adicionais da Empresa:**\n{safe_enrichment}\n\n"
 
-    # Add PERPLEXITY REAL-TIME RESEARCH (LEGENDARY INTELLIGENCE!)
+    # Add PERPLEXITY REAL-TIME RESEARCH (LEGENDARY INTELLIGENCE!) - SANITIZED
     if perplexity_data and perplexity_data.get("research_completed"):
         enrichment_context += "\n\n## 🚀 PESQUISA DE MERCADO EM TEMPO REAL (PERPLEXITY AI)\n\n"
         enrichment_context += "**Nota:** Os dados abaixo foram coletados em tempo real da web com citações verificadas.\n\n"
 
-        # Competitor intelligence
+        # Competitor intelligence (SANITIZED)
         if perplexity_data.get("competitors"):
             comp_data = perplexity_data["competitors"]
+            safe_comp = sanitize_for_prompt(comp_data.get('competitor_analysis', 'N/A'), max_length=2500)
             enrichment_context += "### INTELIGÊNCIA COMPETITIVA (REAL-TIME)\n"
-            enrichment_context += f"{comp_data.get('competitor_analysis', 'N/A')}\n\n"
+            enrichment_context += f"{safe_comp}\n\n"
 
-        # Market sizing
+        # Market sizing (SANITIZED)
         if perplexity_data.get("market_sizing"):
             market_data = perplexity_data["market_sizing"]
+            safe_market = sanitize_for_prompt(market_data.get('market_sizing', 'N/A'), max_length=2000)
             enrichment_context += "### DIMENSIONAMENTO DE MERCADO (TAM/SAM/SOM)\n"
-            enrichment_context += f"{market_data.get('market_sizing', 'N/A')}\n\n"
+            enrichment_context += f"{safe_market}\n\n"
 
-        # Industry trends
+        # Industry trends (SANITIZED)
         if perplexity_data.get("industry_trends"):
             trend_data = perplexity_data["industry_trends"]
+            safe_trend = sanitize_for_prompt(trend_data.get('trend_analysis', 'N/A'), max_length=2000)
             enrichment_context += "### TENDÊNCIAS E INSIGHTS DO SETOR\n"
-            enrichment_context += f"{trend_data.get('trend_analysis', 'N/A')}\n\n"
+            enrichment_context += f"{safe_trend}\n\n"
 
-        # Company intelligence
+        # Company intelligence (SANITIZED)
         if perplexity_data.get("company_intelligence"):
             intel_data = perplexity_data["company_intelligence"]
+            safe_intel = sanitize_for_prompt(intel_data.get('company_intelligence', 'N/A'), max_length=2000)
             enrichment_context += f"### INTELIGÊNCIA DA EMPRESA ({company})\n"
-            enrichment_context += f"{intel_data.get('company_intelligence', 'N/A')}\n\n"
+            enrichment_context += f"{safe_intel}\n\n"
 
-        # Solution strategies
+        # Solution strategies (SANITIZED)
         if perplexity_data.get("solution_strategies"):
             solution_data = perplexity_data["solution_strategies"]
+            safe_solution = sanitize_for_prompt(solution_data.get('solution_research', 'N/A'), max_length=2000)
             enrichment_context += f"### ESTRATÉGIAS E MELHORES PRÁTICAS PARA: {challenge or 'Crescimento'}\n"
-            enrichment_context += f"{solution_data.get('solution_research', 'N/A')}\n\n"
+            enrichment_context += f"{safe_solution}\n\n"
 
         enrichment_context += "**Fonte:** Perplexity Sonar Pro (Web em Tempo Real)\n"
         enrichment_context += f"**Data da Pesquisa:** {perplexity_data.get('research_date', 'N/A')}\n\n"
@@ -136,6 +154,12 @@ def build_enhanced_prompt(
     if len(enrichment_context) > MAX_ENRICHMENT_LENGTH:
         logger.warning(f"[PROMPT] Enrichment context too long ({len(enrichment_context)} chars), truncating to {MAX_ENRICHMENT_LENGTH}")
         enrichment_context = enrichment_context[:MAX_ENRICHMENT_LENGTH] + "\n\n[...dados adicionais omitidos para otimização...]"
+
+    # Wrap enrichment context with clear boundaries for injection safety
+    if enrichment_context:
+        enrichment_context = "\n\n" + wrap_with_boundaries(enrichment_context, "DADOS_EXTERNOS")
+
+    logger.info(f"[PROMPT] Enrichment context sanitized and wrapped: {len(enrichment_context)} chars")
 
     prompt = f"""# CONTEXTO E MISSÃO
 

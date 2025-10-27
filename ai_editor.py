@@ -11,6 +11,9 @@ import httpx
 import os
 from dotenv import load_dotenv
 
+# Import prompt injection sanitization
+from prompt_injection_sanitizer import sanitize_for_prompt, validate_instruction
+
 logger = logging.getLogger(__name__)
 load_dotenv()
 
@@ -112,6 +115,19 @@ async def generate_edit_suggestion(
             "cost_estimate": float
         }
     """
+
+    # STEP 1: Validate and sanitize instruction (can raise ValueError)
+    try:
+        instruction = validate_instruction(instruction)
+    except ValueError as e:
+        logger.error(f"[AI EDITOR] Instruction validation failed: {e}")
+        raise Exception(f"Invalid instruction: {str(e)}")
+
+    # STEP 2: Sanitize user-provided text (could be manipulated)
+    selected_text = sanitize_for_prompt(selected_text, max_length=2000, strict_mode=True)
+    section_context = sanitize_for_prompt(section_context, max_length=1000, strict_mode=True)
+
+    logger.info(f"[AI EDITOR] Inputs sanitized successfully")
 
     # Auto-detect complexity if not specified
     if complexity is None:

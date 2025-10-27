@@ -26,6 +26,9 @@ from validation_utils import (
     detect_english_leakage
 )
 
+# Import prompt injection sanitization
+from prompt_injection_sanitizer import sanitize_dict_recursive, sanitize_for_prompt
+
 logger = logging.getLogger(__name__)
 load_dotenv()
 
@@ -251,7 +254,13 @@ async def stage1_extract_data(
 
     logger.info("[STAGE 1] Extracting structured data...")
 
-    # Build context
+    # Sanitize all external data before injection
+    safe_apify_data = sanitize_dict_recursive(apify_data, max_length=3000) if apify_data else None
+    safe_perplexity_data = sanitize_dict_recursive(perplexity_data, max_length=3000) if perplexity_data else None
+
+    logger.info(f"[STAGE 1] Data sanitized for prompt injection")
+
+    # Build context with sanitized data
     data_context = f"""# RAW DATA SOURCES
 
 ## Company Information
@@ -260,11 +269,11 @@ async def stage1_extract_data(
 - Website: {website or 'N/A'}
 - Challenge: {challenge or 'N/A'}
 
-## Apify Data (Web Scraping)
-{json.dumps(apify_data, indent=2, ensure_ascii=False) if apify_data else 'No Apify data'}
+## Apify Data (Web Scraping) - SANITIZED
+{json.dumps(safe_apify_data, indent=2, ensure_ascii=False) if safe_apify_data else 'No Apify data'}
 
-## Perplexity Data (Real-Time Research)
-{json.dumps(perplexity_data, indent=2, ensure_ascii=False) if perplexity_data else 'No Perplexity data'}
+## Perplexity Data (Real-Time Research) - SANITIZED
+{json.dumps(safe_perplexity_data, indent=2, ensure_ascii=False) if safe_perplexity_data else 'No Perplexity data'}
 """
 
     prompt = f"""{data_context}

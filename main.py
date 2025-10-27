@@ -145,8 +145,15 @@ def clear_progress(submission_id: int):
 # BACKGROUND TASK: Process AI Analysis with Progress Tracking
 # ============================================================================
 
-async def process_analysis_task(submission_id: int):
-    """Background task to generate AI analysis with Apify enrichment"""
+async def process_analysis_task(submission_id: int, force_regenerate: bool = False):
+    """
+    Background task to generate AI analysis with Apify enrichment
+
+    Args:
+        submission_id: ID of the submission to process
+        force_regenerate: If True, bypass analysis cache and force fresh AI generation
+                         (still uses institutional memory cache for external data)
+    """
     try:
         # Get submission details
         submission = await get_submission(submission_id)
@@ -336,26 +343,70 @@ async def process_analysis_task(submission_id: int):
         # Progress: Deep research complete
         emit_progress(submission_id, "deep_research", "Pesquisa de mercado concluída! Iniciando geração de análise estratégica", 50)
 
-        # Step 2: Generate WORLD-CLASS AI analysis with FULL multi-stage pipeline
-        print(f"[AI] 🚀 Generating LEGENDARY strategic analysis (6-stage pipeline) for submission {submission_id}...")
-        emit_progress(submission_id, "ai_analysis", "Gerando análise estratégica com IA (pipeline de 6 etapas: SWOT, PESTEL, Competidores, Riscos, OKRs)", 60)
+        # Step 2: Check cache FIRST before generating analysis (SAVES $15-25 PER HIT!)
+        # Skip cache check if force_regenerate=True
+        from enhanced_cache import get_cached_analysis, cache_analysis_result
 
-        import time
-        start_time = time.time()
+        cached_analysis_result = None
+        if not force_regenerate:
+            print(f"[CACHE] 🔍 Checking analysis cache for {submission['company']}...")
+            cached_analysis_result = await get_cached_analysis(
+                company=submission["company"],
+                industry=submission["industry"],
+                challenge=submission.get("challenge"),
+                website=submission.get("website")
+            )
+        else:
+            print(f"[REGENERATE] 🔄 Force regenerate - bypassing analysis cache")
 
-        # Use the NEW multi-stage pipeline with ALL advanced features
-        analysis = await generate_multistage_analysis(
-            company=submission["company"],
-            industry=submission["industry"],
-            website=submission.get("website"),
-            challenge=submission.get("challenge"),
-            apify_data=apify_data,
-            perplexity_data=perplexity_data,  # Initial Perplexity research
-            run_all_stages=True,  # Enable ALL 6 stages (gap analysis, competitive matrix, risk scoring)
-            perplexity_service=perplexity_service  # For follow-up research queries
-        )
+        if cached_analysis_result and cached_analysis_result.get("cache_hit") and not force_regenerate:
+            # CACHE HIT! Return cached analysis instantly
+            analysis = cached_analysis_result["analysis"]
+            processing_time = 0.1  # Near-instant from cache
+            cost_saved = cached_analysis_result.get("cost_saved", 20)
+            cache_age_hours = cached_analysis_result.get("cache_age_hours", 0)
 
-        processing_time = time.time() - start_time
+            print(f"[CACHE] 🎯💰 CACHE HIT! Saved ${cost_saved:.2f} (age: {cache_age_hours:.1f}h)")
+            emit_progress(submission_id, "ai_analysis", f"✨ Análise recuperada do cache (economia de ${cost_saved:.2f}!)", 60)
+
+        else:
+            # CACHE MISS or FORCE REGENERATE - Generate new analysis
+            if force_regenerate:
+                print(f"[REGENERATE] Generating fresh AI analysis (external data may be cached)")
+            else:
+                print(f"[CACHE] ❌ Cache miss - generating new analysis")
+            print(f"[AI] 🚀 Generating LEGENDARY strategic analysis (6-stage pipeline) for submission {submission_id}...")
+            emit_progress(submission_id, "ai_analysis", "Gerando análise estratégica com IA (pipeline de 6 etapas: SWOT, PESTEL, Competidores, Riscos, OKRs)", 60)
+
+            import time
+            start_time = time.time()
+
+            # Use the NEW multi-stage pipeline with ALL advanced features
+            analysis = await generate_multistage_analysis(
+                company=submission["company"],
+                industry=submission["industry"],
+                website=submission.get("website"),
+                challenge=submission.get("challenge"),
+                apify_data=apify_data,
+                perplexity_data=perplexity_data,  # Initial Perplexity research
+                run_all_stages=True,  # Enable ALL 6 stages (gap analysis, competitive matrix, risk scoring)
+                perplexity_service=perplexity_service  # For follow-up research queries
+            )
+
+            processing_time = time.time() - start_time
+
+            # Cache the result for future use (CRITICAL - saves $15-25 next time!)
+            estimated_cost = 20.0  # Approximate cost of full analysis
+            await cache_analysis_result(
+                company=submission["company"],
+                industry=submission["industry"],
+                challenge=submission.get("challenge"),
+                website=submission.get("website"),
+                analysis_result=analysis,
+                cost=estimated_cost,
+                processing_time=processing_time
+            )
+            print(f"[CACHE] ✅ Analysis cached - will save ${estimated_cost:.2f} on next request")
 
         # Validate structure (the core structure is still the same)
         if not await validate_enhanced_analysis(analysis):
@@ -795,14 +846,32 @@ async def get_submissions(current_user: dict = RequireAuth, response: Response =
     Returns list of all submissions ordered by created_at DESC
 
     Cache-Control: 30 seconds (for faster dashboard refreshes)
+    NOW WITH DASHBOARD STATS CACHING (5 min TTL)
     """
     try:
         print(f"[AUTH] User {current_user['email']} accessing submissions")
 
-        submissions = await get_all_submissions()
+        # Check cache first for dashboard stats (5 min TTL)
+        from enhanced_cache import get_cached_dashboard_stats, cache_dashboard_stats
 
-        # Convert to Pydantic models
-        submission_list = [Submission(**sub) for sub in submissions]
+        cached_stats = await get_cached_dashboard_stats()
+
+        if cached_stats:
+            print(f"[CACHE] 🎯 Dashboard stats cache hit!")
+            submissions = cached_stats.get("submissions", [])
+            submission_list = [Submission(**sub) for sub in submissions]
+        else:
+            print(f"[CACHE] ❌ Dashboard stats cache miss - fetching from database")
+            submissions = await get_all_submissions()
+
+            # Convert to Pydantic models
+            submission_list = [Submission(**sub) for sub in submissions]
+
+            # Cache for 5 minutes
+            await cache_dashboard_stats({
+                "submissions": submissions,
+                "cached_at": datetime.utcnow().isoformat()
+            })
 
         # Add caching headers (30 second cache)
         if response:
@@ -936,6 +1005,56 @@ async def reprocess_submission(
         raise
     except Exception as e:
         print(f"[ERROR] Reprocess error: {e}")
+        return ReprocessResponse(success=False, error=str(e))
+
+
+@app.post("/api/admin/submissions/{submission_id}/regenerate", response_model=ReprocessResponse)
+async def regenerate_analysis(
+    submission_id: int,
+    background_tasks: BackgroundTasks,
+    current_user: dict = RequireAuth,
+):
+    """
+    Regenerate analysis for a completed submission (Protected Admin endpoint)
+
+    This forces a fresh AI analysis while reusing cached external data (Apify/Perplexity)
+    from institutional memory if still fresh (within TTL).
+
+    Use cases:
+    - Get a different perspective on the same company data
+    - Regenerate after AI model improvements
+    - Try again with better prompt engineering
+
+    Requires valid JWT token in Authorization header
+    """
+    try:
+        print(f"[AUTH] User {current_user['email']} regenerating analysis for submission {submission_id}")
+
+        # Check if submission exists
+        submission = await get_submission(submission_id)
+        if not submission:
+            raise HTTPException(status_code=404, detail="Submission not found")
+
+        # Set to pending status (keep existing data in case of failure)
+        await update_submission_status(
+            submission_id=submission_id,
+            status="pending",
+            error_message=None,
+            # Note: Don't clear report_json - we'll replace it on success
+        )
+
+        # Trigger new analysis with force_regenerate=True
+        # This bypasses analysis cache but uses institutional memory for external data
+        background_tasks.add_task(process_analysis_task, submission_id, True)
+
+        print(f"[OK] Regenerating analysis for submission {submission_id} (force=True)")
+
+        return ReprocessResponse(success=True)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Regenerate error: {e}")
         return ReprocessResponse(success=False, error=str(e))
 
 
@@ -1246,6 +1365,105 @@ async def regenerate_pdf_with_edits(
         import traceback
         traceback.print_exc()
         return RegeneratePDFResponse(success=False, error=str(e))
+
+
+@app.get("/api/admin/cache/statistics")
+async def get_cache_statistics_endpoint(current_user: dict = RequireAuth):
+    """
+    Get comprehensive cache statistics (Protected Admin endpoint)
+
+    Returns cache performance metrics including:
+    - Cache hit rates
+    - Total cost savings
+    - Cache sizes
+    - Most accessed entries
+
+    Requires valid JWT token in Authorization header
+    """
+    try:
+        print(f"[AUTH] User {current_user['email']} accessing cache statistics")
+
+        from enhanced_cache import get_cache_statistics, clear_expired_cache
+        from institutional_memory import get_cache_stats as get_institutional_stats
+
+        # Get all cache statistics
+        enhanced_stats = await get_cache_statistics()
+        institutional_stats = await get_institutional_stats()
+
+        # Calculate overall statistics
+        total_cost_saved = enhanced_stats.get("total_cost_saved", 0)
+
+        return {
+            "success": True,
+            "data": {
+                "enhanced_cache": enhanced_stats,
+                "institutional_memory": institutional_stats,
+                "summary": {
+                    "total_cost_saved_usd": total_cost_saved,
+                    "total_records": (
+                        enhanced_stats.get("analysis_cache", {}).get("total_records", 0) +
+                        enhanced_stats.get("stage_cache", {}).get("total_records", 0) +
+                        enhanced_stats.get("pdf_cache", {}).get("total_records", 0) +
+                        institutional_stats.get("total_records", 0)
+                    ),
+                    "analysis_cache_hit_rate": "High value cache - saves $15-25 per hit",
+                    "stage_cache_hit_rate": "Partial savings - saves $0.10-3 per stage",
+                    "pdf_cache": "Time savings - instant PDF regeneration",
+                },
+                "recommendations": [
+                    f"✅ Analysis cache saved ${total_cost_saved:.2f} total",
+                    "💡 Consider running clear_expired_cache() periodically (daily cron)",
+                    "📊 Monitor cache hit rates to optimize TTL values",
+                    "🚀 High cache hit rate = significant cost savings"
+                ]
+            }
+        }
+
+    except Exception as e:
+        print(f"[ERROR] Cache statistics error: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@app.post("/api/admin/cache/clear-expired")
+async def clear_expired_cache_endpoint(current_user: dict = RequireAuth):
+    """
+    Clear expired cache entries (Protected Admin endpoint)
+
+    Removes old cache entries based on TTL:
+    - Analysis cache: 30 days
+    - Stage cache: 7 days
+    - PDF cache: 90 days
+    - Stats cache: 5 minutes
+
+    Requires valid JWT token in Authorization header
+    """
+    try:
+        print(f"[AUTH] User {current_user['email']} clearing expired cache")
+
+        from enhanced_cache import clear_expired_cache
+
+        cleared = await clear_expired_cache()
+
+        total_cleared = sum(cleared.values())
+
+        return {
+            "success": True,
+            "data": {
+                "cleared": cleared,
+                "total_cleared": total_cleared,
+                "message": f"Cleared {total_cleared} expired cache entries"
+            }
+        }
+
+    except Exception as e:
+        print(f"[ERROR] Clear cache error: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 
 # Exception handlers
