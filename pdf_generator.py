@@ -354,4 +354,5 @@ def generate_pdf_from_report(
     pdf.set_text_color(100, 100, 100)
     pdf.cell(0, 6, 'Relatório gerado por Strategy AI • Powered by IA', 0, 1, 'C')
 
-    return pdf.output()
+    # Return PDF as bytes
+    return bytes(pdf.output())

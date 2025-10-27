@@ -610,12 +610,29 @@ async def export_submission_pdf(
 
         # Parse report JSON
         try:
-            report_data = json.loads(report_json_str)
+            report_json = json.loads(report_json_str)
         except json.JSONDecodeError:
             return {"success": False, "error": "Invalid report JSON"}
 
+        # Build submission data for PDF generator (consistent format)
+        submission_data = {
+            "company": submission.get("company", ""),
+            "industry": submission.get("industry", ""),
+            "website": submission.get("website", ""),
+            "challenge": submission.get("challenge", ""),
+            "name": submission.get("name", ""),
+            "updated_at": submission.get("last_edited_at") or submission.get("updated_at", "")
+        }
+
         # Generate PDF
-        pdf_bytes = generate_pdf_from_report(submission, report_data)
+        print(f"[PDF] Generating PDF for submission {submission_id}...")
+        pdf_bytes = generate_pdf_from_report(submission_data, report_json)
+
+        if not pdf_bytes or len(pdf_bytes) == 0:
+            print(f"[ERROR] PDF generation returned empty bytes!")
+            return {"success": False, "error": "PDF generation failed - empty output"}
+
+        print(f"[PDF] PDF generated successfully ({len(pdf_bytes)} bytes)")
 
         # Return PDF file
         filename = f"relatorio-estrategico-{submission['company'].replace(' ', '-')}-{datetime.now().strftime('%Y-%m-%d')}.pdf"
@@ -624,7 +641,8 @@ async def export_submission_pdf(
             content=pdf_bytes,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f'attachment; filename="{filename}"'
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(pdf_bytes))
             }
         )
 
