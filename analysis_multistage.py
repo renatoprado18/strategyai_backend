@@ -1127,6 +1127,7 @@ Recommend highest-scoring option WITH confidence level
     }}
   }},"""
 
+    prompt += """
   "parte_3_como_chegar_la": {{
     "okrs_propostos": [
       {{
