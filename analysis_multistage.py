@@ -649,11 +649,26 @@ Create 3 scenarios:
   }},
 
   "tam_sam_som": {{
-    "tam_total_market": "R$ X bilhões - descrição COM FONTE (ex: 'Segundo relatório X' ou 'Estimativa baseada em crescimento do setor')",
-    "sam_available_market": "R$ Y milhões - descrição COM FONTE ou marcado como 'Estimativa sem dados'",
-    "som_obtainable_market": "R$ Z milhões - descrição COM FONTE ou marcado como 'Projeção baseada em análise'",
-    "justificativa": "Explique premissas e cálculos. SE NÃO HOUVER dados fornecidos, escreva 'Dados insuficientes para estimativa precisa. Análise qualitativa: [descrição do mercado sem números inventados].'",
-    "fonte_dados": "Cite fonte específica (website, documento fornecido, projeção baseada em X) ou 'Análise qualitativa apenas - dados não disponíveis'"
+    // **IMPORTANTE:** Somente preencha com números SE houver dados concretos (demonstrações financeiras, pesquisa de mercado, relatórios setoriais).
+    // SE NÃO HOUVER DADOS SUFICIENTES, retorne o formato alternativo abaixo:
+    // {{
+    //   "status": "dados_insuficientes",
+    //   "mensagem": "Análise TAM/SAM/SOM requer dados adicionais para evitar estimativas imprecisas",
+    //   "o_que_fornecer": [
+    //     "Demonstrações financeiras (últimos 2 anos)",
+    //     "Faturamento atual da empresa",
+    //     "Relatórios de mercado ou pesquisa setorial específica"
+    //   ],
+    //   "contexto_qualitativo": "Breve descrição do mercado sem números específicos",
+    //   "proximos_passos": "Orientação sobre como obter análise quantitativa completa"
+    // }}
+
+    // SE HOUVER DADOS, use o formato abaixo:
+    "tam_total_market": "R$ X bilhões - descrição COM FONTE (ex: 'Segundo IBGE 2024' ou 'Baseado em relatório Y')",
+    "sam_available_market": "R$ Y milhões - descrição COM FONTE ou marcado como 'Estimativa baseada em [premissa específica]'",
+    "som_obtainable_market": "R$ Z milhões - descrição COM FONTE ou marcado como 'Projeção baseada em [cálculo específico]'",
+    "justificativa": "Explique premissas e cálculos com fontes claras.",
+    "fonte_dados": "Cite fonte específica (IBGE, relatório X, documento fornecido) ou descreva premissas"
   }},
 
   "posicionamento_competitivo": {{
@@ -733,19 +748,38 @@ Create 3 scenarios:
 ```
 
 **REQUIREMENTS CRÍTICOS:**
-1. **FONTE DE DADOS:** Para TAM/SAM/SOM e números específicos:
-   - SE houver fonte (website, documento), cite explicitamente
-   - SE NÃO houver dados, escreva "Estimativa baseada em [premissa]" ou "Dados não disponíveis - análise qualitativa"
-   - NUNCA invente números sem indicar que é estimativa
 
-2. **RECOMENDAÇÕES ESPECÍFICAS (NÃO GENÉRICAS):**
+0. **HONESTIDADE ACIMA DE TUDO (REGRA ABSOLUTA):**
+   - Se NÃO tem dados concretos → escreva "Dados insuficientes para análise quantitativa"
+   - NUNCA invente números específicos sem fonte clara ou premissas explícitas
+   - Prefira análise qualitativa a números fabricados
+   - É MELHOR admitir falta de dados do que alucinar informações
+   - Quando em dúvida: qualitativo > quantitativo inventado
+
+1. **SANITY CHECKS OBRIGATÓRIOS (Validação de Realidade):**
+   - **TAM/SAM/SOM:**
+     * SOM para empresa PEQUENA: 0.01-0.5% do TAM (ex: TAM de R$ 100 bi → SOM de R$ 10-500 milhões)
+     * SOM para empresa MÉDIA: 0.5-2% do TAM
+     * SOM para empresa GRANDE: 2-10% do TAM
+     * SOM > R$ 10 bilhões = improvável para maioria das empresas (apenas gigantes)
+     * Hierarquia: SOM ≤ SAM ≤ TAM (sempre)
+   - **Market Share:** Empresas novas/pequenas raramente > 5% do mercado total
+   - **Crescimento:** Projeções > 100% ao ano exigem justificativa extraordinária
+
+2. **FONTE DE DADOS:** Para TAM/SAM/SOM e números específicos:
+   - SE houver fonte (website, documento, IBGE), cite explicitamente: "Segundo IBGE 2024" ou "Baseado em relatório X"
+   - SE NÃO houver dados suficientes, use formato alternativo de "dados_insuficientes" (ver exemplo no JSON)
+   - Se fizer estimativa, marque claramente: "ESTIMATIVA baseada em [premissa específica]"
+   - NUNCA invente números sem indicar fonte ou premissa
+
+3. **RECOMENDAÇÕES ESPECÍFICAS (NÃO GENÉRICAS):**
    - Cada recomendação deve ser única para {company}
    - Explique por que NÃO aplicaria a todos os concorrentes
    - Use contexto específico (produto, mercado, challenge fornecido)
    - EVITE: "expandir serviços", "inovar", "melhorar eficiência" (muito genérico)
    - PREFIRA: Ações específicas baseadas no contexto único de {company}
 
-3. **QUALIDADE:**
+4. **QUALIDADE:**
    - Use números específicos (não "muitos", "alguns", "crescendo")
    - Baseie análise em fatos dos dados extraídos
    - Seja acionável (não acadêmico)
@@ -793,6 +827,47 @@ Create 3 scenarios:
             max_tokens=8000
         )
         strategic_analysis = json.loads(response)
+
+    # ========================================================================
+    # HALLUCINATION DETECTION & AUTO-FIX
+    # ========================================================================
+    from hallucination_detector import validate_market_sizing, detect_company_size, validate_numeric_claims
+
+    # Detect company size for validation
+    company_size = detect_company_size(extracted_data.get('company_info', {}))
+    logger.info(f"[STAGE 3] Detected company size: {company_size}")
+
+    # Validate TAM/SAM/SOM if present
+    if 'tam_sam_som' in strategic_analysis:
+        tam_sam_som = strategic_analysis['tam_sam_som']
+
+        # Only validate if it has numeric values (not the "dados_insuficientes" format)
+        if not isinstance(tam_sam_som, dict) or tam_sam_som.get('status') != 'dados_insuficientes':
+            validation = validate_market_sizing(
+                tam=tam_sam_som.get('tam_total_market', ''),
+                sam=tam_sam_som.get('sam_available_market', ''),
+                som=tam_sam_som.get('som_obtainable_market', ''),
+                company_size=company_size,
+                company_name=company
+            )
+
+            if not validation['is_valid']:
+                logger.error(f"[HALLUCINATION DETECTED] TAM/SAM/SOM validation failed:")
+                logger.error(f"[HALLUCINATION] Severity: {validation['severity']}")
+                for issue in validation['issues']:
+                    logger.error(f"[HALLUCINATION] - {issue}")
+
+                # Auto-fix by replacing with "dados_insuficientes" format
+                if validation['auto_fix']:
+                    logger.warning(f"[AUTO-FIX] Replacing TAM/SAM/SOM with 'dados_insuficientes' format")
+                    strategic_analysis['tam_sam_som'] = validation['auto_fix']
+
+    # Validate other numeric claims
+    numeric_validation = validate_numeric_claims(strategic_analysis)
+    if not numeric_validation['is_valid']:
+        logger.warning(f"[HALLUCINATION] Found {len(numeric_validation['violations'])} numeric claim violations:")
+        for violation in numeric_validation['violations'][:5]:  # Log first 5
+            logger.warning(f"[HALLUCINATION] - {violation}")
 
     logger.info(f"[STAGE 3] ✅ Generated strategic analysis with {len(strategic_analysis.get('okrs_propostos', []))} OKRs")
     return strategic_analysis
@@ -1257,6 +1332,31 @@ async def generate_multistage_analysis(
         stages_completed = ["extraction"]
         models_used = {"stage1_extraction": MODEL_EXTRACTION}
         follow_up_data = {}
+
+        # ===== DATA QUALITY ASSESSMENT =====
+        tier, tier_label, tier_recommendations = assess_data_quality(
+            website=bool(website),
+            apify_success=bool(apify_data and apify_data.get('data')),
+            perplexity_success=bool(perplexity_data and perplexity_data.get('research_completed')),
+            documents_provided=False,  # Could check extracted_data for documents
+            financial_data=bool(extracted_data.get('company_info', {}).get('financial_data'))
+        )
+
+        logger.info(f"[MULTISTAGE] Data quality tier: {tier_label} ({tier})")
+        if tier_recommendations:
+            logger.info(f"[MULTISTAGE] Recommendations: {tier_recommendations}")
+
+        # Define enabled sections based on quality tier
+        sections_config = {
+            "legendary": ["all"],
+            "full": ["all"],
+            "good": ["pestel", "porter", "swot", "blue_ocean", "positioning", "recommendations", "okrs", "scenarios", "roadmap"],
+            "partial": ["pestel", "porter", "swot", "positioning", "recommendations", "roadmap"],  # NO TAM/SAM/SOM, NO OKRs
+            "minimal": ["pestel_brief", "swot", "positioning", "recommendations"]  # NO TAM/SAM/SOM, NO DETAILED FRAMEWORKS
+        }
+
+        enabled_sections = sections_config.get(tier, sections_config["minimal"])
+        logger.info(f"[MULTISTAGE] Enabled sections for {tier}: {enabled_sections}")
 
         # ===== STAGE 2: Gap analysis + follow-up (OPTIONAL) =====
         if run_all_stages and perplexity_service:
