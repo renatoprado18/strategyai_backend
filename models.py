@@ -237,4 +237,5 @@ class RegeneratePDFResponse(BaseModel):
     """Response after regenerating PDF"""
     success: bool
     pdf_url: Optional[str] = None
+    message: Optional[str] = None
     error: Optional[str] = None

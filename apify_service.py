@@ -1,13 +1,25 @@
 """
 Apify integration for web scraping, competitor research, and data enrichment.
+Includes intelligent caching via institutional_memory to reduce costs and improve speed.
 """
 import os
 from typing import Dict, Any, Optional, List
 from apify_client import ApifyClient
 from dotenv import load_dotenv
 import asyncio
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    before_sleep_log
+)
+import logging
+from institutional_memory import store_memory, retrieve_memory
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # Apify configuration
 APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN")
@@ -20,6 +32,68 @@ COMPANY_ENRICHMENT_ACTOR = os.getenv("APIFY_COMPANY_ENRICHMENT_ACTOR", "apify/we
 # Timeout settings
 SCRAPER_TIMEOUT_SECONDS = 30
 ENRICHMENT_TIMEOUT_SECONDS = 45
+
+# Retry configuration (exponential backoff: 2s, 4s, 8s)
+RETRY_ATTEMPTS = 3
+RETRY_MIN_WAIT = 2
+RETRY_MAX_WAIT = 10
+
+# Cache configuration
+APIFY_CACHE_TTL_HOURS = 24 * 7  # 7 days cache for Apify data
+
+
+# ============================================================================
+# CACHING HELPERS
+# ============================================================================
+
+async def _cached_apify_call(
+    cache_entity_type: str,
+    cache_entity_id: str,
+    apify_func,
+    *args,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Wrapper to check cache before calling Apify, store on success
+
+    Args:
+        cache_entity_type: Type for institutional memory (e.g., "apify_website")
+        cache_entity_id: Unique ID for cache key (e.g., website URL)
+        apify_func: The async Apify function to call
+        *args, **kwargs: Arguments to pass to the function
+
+    Returns:
+        Cached or fresh Apify data
+    """
+    # Check cache first
+    cached_data = await retrieve_memory(
+        entity_type=cache_entity_type,
+        entity_id=cache_entity_id,
+        max_age_hours=APIFY_CACHE_TTL_HOURS
+    )
+
+    if cached_data:
+        logger.info(f"[APIFY CACHE] ✅ HIT: {cache_entity_type}:{cache_entity_id}")
+        return cached_data
+
+    logger.info(f"[APIFY CACHE] ❌ MISS: {cache_entity_type}:{cache_entity_id} - calling Apify...")
+
+    # Cache miss - call the actual Apify function
+    result = await apify_func(*args, **kwargs)
+
+    # Store in cache if successful (no error field or error is None)
+    if not result.get("error"):
+        await store_memory(
+            entity_type=cache_entity_type,
+            entity_id=cache_entity_id,
+            data=result,
+            source="apify",
+            confidence=0.9  # High confidence for direct Apify data
+        )
+        logger.info(f"[APIFY CACHE] 💾 STORED: {cache_entity_type}:{cache_entity_id}")
+
+    return result
+
 
 def get_apify_client() -> ApifyClient:
     """
@@ -36,6 +110,14 @@ def get_apify_client() -> ApifyClient:
 
     return ApifyClient(APIFY_API_TOKEN)
 
+
+@retry(
+    stop=stop_after_attempt(RETRY_ATTEMPTS),
+    wait=wait_exponential(multiplier=1, min=RETRY_MIN_WAIT, max=RETRY_MAX_WAIT),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True
+)
 async def scrape_company_website(website_url: str) -> Dict[str, Any]:
     """
     Scrape company website to extract key information.
@@ -105,6 +187,14 @@ async def scrape_company_website(website_url: str) -> Dict[str, Any]:
             "scraped_successfully": False
         }
 
+
+@retry(
+    stop=stop_after_attempt(RETRY_ATTEMPTS),
+    wait=wait_exponential(multiplier=1, min=RETRY_MIN_WAIT, max=RETRY_MAX_WAIT),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True
+)
 async def research_competitors(company: str, industry: str) -> Dict[str, Any]:
     """
     Research competitors in the same industry.
@@ -176,6 +266,14 @@ async def research_competitors(company: str, industry: str) -> Dict[str, Any]:
             "researched_successfully": False
         }
 
+
+@retry(
+    stop=stop_after_attempt(RETRY_ATTEMPTS),
+    wait=wait_exponential(multiplier=1, min=RETRY_MIN_WAIT, max=RETRY_MAX_WAIT),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True
+)
 async def research_industry_trends(industry: str) -> Dict[str, Any]:
     """
     Research current industry trends and news.
@@ -243,6 +341,14 @@ async def research_industry_trends(industry: str) -> Dict[str, Any]:
             "researched_successfully": False
         }
 
+
+@retry(
+    stop=stop_after_attempt(RETRY_ATTEMPTS),
+    wait=wait_exponential(multiplier=1, min=RETRY_MIN_WAIT, max=RETRY_MAX_WAIT),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True
+)
 async def enrich_company_data(company: str, website: Optional[str] = None) -> Dict[str, Any]:
     """
     Enrich company data with additional information.
@@ -307,6 +413,14 @@ async def enrich_company_data(company: str, website: Optional[str] = None) -> Di
             "enriched_successfully": False
         }
 
+
+@retry(
+    stop=stop_after_attempt(RETRY_ATTEMPTS),
+    wait=wait_exponential(multiplier=1, min=RETRY_MIN_WAIT, max=RETRY_MAX_WAIT),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True
+)
 async def scrape_linkedin_company(linkedin_url: Optional[str], company_name: str) -> Dict[str, Any]:
     """
     Extract information about company from LinkedIn or search results.
@@ -365,6 +479,14 @@ async def scrape_linkedin_company(linkedin_url: Optional[str], company_name: str
             "scraped_successfully": False
         }
 
+
+@retry(
+    stop=stop_after_attempt(RETRY_ATTEMPTS),
+    wait=wait_exponential(multiplier=1, min=RETRY_MIN_WAIT, max=RETRY_MAX_WAIT),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True
+)
 async def scrape_linkedin_founder(linkedin_url: Optional[str], founder_name: Optional[str] = None) -> Dict[str, Any]:
     """
     Extract information about founder/CEO from LinkedIn.
@@ -429,6 +551,14 @@ async def scrape_linkedin_founder(linkedin_url: Optional[str], founder_name: Opt
             "scraped_successfully": False
         }
 
+
+@retry(
+    stop=stop_after_attempt(RETRY_ATTEMPTS),
+    wait=wait_exponential(multiplier=1, min=RETRY_MIN_WAIT, max=RETRY_MAX_WAIT),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True
+)
 async def search_company_news(company: str, industry: str) -> Dict[str, Any]:
     """
     Search for recent news articles about the company.
@@ -497,6 +627,14 @@ async def search_company_news(company: str, industry: str) -> Dict[str, Any]:
             "researched_successfully": False
         }
 
+
+@retry(
+    stop=stop_after_attempt(RETRY_ATTEMPTS),
+    wait=wait_exponential(multiplier=1, min=RETRY_MIN_WAIT, max=RETRY_MAX_WAIT),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True
+)
 async def search_social_media_presence(company: str, website: Optional[str] = None) -> Dict[str, Any]:
     """
     Search for company's social media presence and public mentions.
@@ -593,34 +731,83 @@ async def gather_all_apify_data(
     """
     print(f"[APIFY] gather_all_apify_data called with website={website}, linkedin_company={linkedin_company}, linkedin_founder={linkedin_founder}")
 
-    # Run all Apify tasks in parallel
+    # Run all Apify tasks in parallel with caching
     tasks = []
 
-    # Website scraping (if URL provided)
+    # Website scraping (if URL provided) - CACHED
     if website and website.strip():
         print(f"[APIFY] Adding website scraping task for: {website}")
-        tasks.append(("website_data", scrape_company_website(website)))
+        tasks.append(("website_data", _cached_apify_call(
+            "apify_website",
+            website.lower().strip(),
+            scrape_company_website,
+            website
+        )))
     else:
         print(f"[APIFY] No website provided, skipping website scraping")
 
-    # Core data gathering (always run)
-    tasks.append(("competitor_data", research_competitors(company, industry)))
-    tasks.append(("industry_trends", research_industry_trends(industry)))
-    tasks.append(("company_enrichment", enrich_company_data(company, website)))
+    # Core data gathering (always run) - ALL CACHED
+    tasks.append(("competitor_data", _cached_apify_call(
+        "apify_competitors",
+        f"{company}:{industry}".lower(),
+        research_competitors,
+        company,
+        industry
+    )))
 
-    # NEW: LinkedIn data gathering
+    tasks.append(("industry_trends", _cached_apify_call(
+        "apify_trends",
+        industry.lower(),
+        research_industry_trends,
+        industry
+    )))
+
+    tasks.append(("company_enrichment", _cached_apify_call(
+        "apify_enrichment",
+        company.lower(),
+        enrich_company_data,
+        company,
+        website
+    )))
+
+    # NEW: LinkedIn data gathering - CACHED
     if linkedin_company or True:  # Always try to find LinkedIn company
         print(f"[APIFY] Adding LinkedIn company scraping task")
-        tasks.append(("linkedin_company_data", scrape_linkedin_company(linkedin_company, company)))
+        linkedin_id = linkedin_company.lower() if linkedin_company else company.lower()
+        tasks.append(("linkedin_company_data", _cached_apify_call(
+            "apify_linkedin_company",
+            linkedin_id,
+            scrape_linkedin_company,
+            linkedin_company,
+            company
+        )))
 
     if linkedin_founder:
         print(f"[APIFY] Adding LinkedIn founder scraping task")
-        tasks.append(("linkedin_founder_data", scrape_linkedin_founder(linkedin_founder)))
+        tasks.append(("linkedin_founder_data", _cached_apify_call(
+            "apify_linkedin_founder",
+            linkedin_founder.lower(),
+            scrape_linkedin_founder,
+            linkedin_founder
+        )))
 
-    # NEW: Public data gathering (news and social media)
+    # NEW: Public data gathering (news and social media) - CACHED
     print(f"[APIFY] Adding news and social media scraping tasks")
-    tasks.append(("news_data", search_company_news(company, industry)))
-    tasks.append(("social_media_data", search_social_media_presence(company, website)))
+    tasks.append(("news_data", _cached_apify_call(
+        "apify_news",
+        f"{company}:{industry}".lower(),
+        search_company_news,
+        company,
+        industry
+    )))
+
+    tasks.append(("social_media_data", _cached_apify_call(
+        "apify_social",
+        company.lower(),
+        search_social_media_presence,
+        company,
+        website
+    )))
 
     # Execute all tasks concurrently
     results = {}
