@@ -376,7 +376,7 @@ List any critical missing information that would help strategic analysis:
 
     system_prompt = "You are a data extraction specialist. Extract facts, skip fluff. Output JSON only."
 
-    response = await call_llm_with_retry(
+    response, _ = await call_llm_with_retry(
         stage_name="STAGE 1",
         model=MODEL_EXTRACTION,
         prompt=prompt,
@@ -450,7 +450,7 @@ Focus on high-impact gaps (competitor data, market sizing, financial metrics).
 
     system_prompt = "You are a research analyst. Generate targeted queries to fill data gaps. Output JSON only."
 
-    response = await call_llm_with_retry(
+    response, _ = await call_llm_with_retry(
         stage_name="STAGE 2",
         model=MODEL_GAP_ANALYSIS,
         prompt=prompt,
@@ -752,7 +752,7 @@ Create 3 scenarios:
 
     system_prompt = "You are a strategic business analyst helping companies develop legitimate competitive strategies. Apply frameworks rigorously using available market data. Be specific, data-driven, and actionable. Output in Brazilian Portuguese."
 
-    response = await call_llm_with_retry(
+    response, _ = await call_llm_with_retry(
         stage_name="STAGE 3",
         model=MODEL_STRATEGY,
         prompt=prompt,
@@ -848,7 +848,7 @@ Return JSON only. No markdown, no explanations.
 
     system_prompt = "You are an expert at executive communications. Polish for clarity and impact. Preserve structure and data."
 
-    response = await call_llm_with_retry(
+    response, _ = await call_llm_with_retry(
         stage_name="STAGE 6",
         model=MODEL_POLISH,
         prompt=prompt,
@@ -967,7 +967,7 @@ Retorne JSON em PORTUGUÊS BRASILEIRO:
 
     system_prompt = "Você é um analista de inteligência competitiva brasileira. Crie matrizes estruturadas baseadas em dados. Liste TODOS os concorrentes relevantes do mercado (mínimo 5-7). Output somente JSON em português."
 
-    response = await call_llm_with_retry(
+    response, _ = await call_llm_with_retry(
         stage_name="STAGE 4",
         model=MODEL_COMPETITIVE,
         prompt=prompt,
@@ -1135,7 +1135,7 @@ REGRA ABSOLUTA: TODO output deve estar em português brasileiro (pt-BR) profissi
 
 Seja específico, quantitativo e acionável. Use português natural e profissional."""
 
-    response = await call_llm_with_retry(
+    response, _ = await call_llm_with_retry(
         stage_name="STAGE 5",
         model=MODEL_RISK_SCORING,
         prompt=prompt,
