@@ -1018,12 +1018,15 @@ Retorne JSON em PORTUGUÊS BRASILEIRO:
   ]
 }}
 
-**REQUISITOS:**
+**REQUISITOS CRÍTICOS:**
 1. **MÍNIMO 5-7 CONCORRENTES** - Liste TODOS os players relevantes do mercado brasileiro
 2. **FONTE DE DADOS** - Indique se dados vieram de fontes fornecidas ou conhecimento do mercado
 3. **HONESTIDADE** - Se não há dados, escreva "N/A" ou "Estimativa baseada em X"
 4. **PORTUGUÊS** - TODO o output em português brasileiro
 5. **ESPECÍFICO** - Seja específico e acionável, não genérico
+6. **JSON VÁLIDO** - NUNCA use aspas duplas (") dentro de strings. Use aspas simples (') ou parênteses ao invés.
+   - ERRADO: "Metodologia "própria" da empresa"
+   - CORRETO: "Metodologia (própria) da empresa" ou "Metodologia 'própria' da empresa"
 """
 
     system_prompt = "Você é um analista de inteligência competitiva brasileira. Crie matrizes estruturadas baseadas em dados. Liste TODOS os concorrentes relevantes do mercado (mínimo 5-7). Output somente JSON em português."

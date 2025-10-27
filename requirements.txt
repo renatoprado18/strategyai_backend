@@ -11,4 +11,4 @@ apify-client>=1.7.0
 upstash-redis>=0.15.0
 pyjwt>=2.8.0
 python-jose[cryptography]>=3.3.0
-xhtml2pdf>=0.2.16
+fpdf2>=2.8.2
