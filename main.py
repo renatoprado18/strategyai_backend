@@ -603,12 +603,14 @@ async def export_submission_pdf(
         if not submission:
             return {"success": False, "error": f"Submission {submission_id} not found"}
 
-        if not submission.get('report_json'):
+        # Use edited_json if available (has edits), otherwise fallback to report_json
+        report_json_str = submission.get('edited_json') or submission.get('report_json')
+        if not report_json_str:
             return {"success": False, "error": "Report not yet generated"}
 
         # Parse report JSON
         try:
-            report_data = json.loads(submission['report_json'])
+            report_data = json.loads(report_json_str)
         except json.JSONDecodeError:
             return {"success": False, "error": "Invalid report JSON"}
 

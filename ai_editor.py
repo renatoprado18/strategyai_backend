@@ -128,12 +128,16 @@ async def generate_edit_suggestion(
     # Build formatting instructions based on data type
     if is_list_item:
         formatting_instruction = """
-**FORMATTING RULES (LIST ITEM):**
+**FORMATTING RULES (SINGLE LIST ITEM):**
+- You are editing ONE item in a list
+- Return EXACTLY ONE sentence/phrase - NOT multiple items
 - Return PLAIN TEXT ONLY (no bullets, no dashes, no formatting)
 - The text will be displayed as a bullet point automatically
 - DO NOT add: •, -, *, or any list markers
-- DO NOT add line breaks within the item
-- Keep it as a single, concise sentence or phrase
+- DO NOT add line breaks
+- DO NOT split into multiple items
+- WRONG: "Item 1 • Item 2 • Item 3"
+- CORRECT: "Single edited item text"
 """
     else:
         formatting_instruction = """
@@ -201,13 +205,20 @@ async def generate_edit_suggestion(
 
         # Sanitize formatting for list items (remove stray bullets/markers)
         if is_list_item:
-            suggested_edit = result.get("suggested_edit", "")
-            # Remove leading bullets, dashes, asterisks, and extra whitespace
-            suggested_edit = suggested_edit.strip()
-            # Remove common list markers at the start
-            for marker in ["• ", "- ", "* ", "→ ", "▸ ", "▪ ", "◦ "]:
+            suggested_edit = result.get("suggested_edit", "").strip()
+
+            # If AI returned multiple items (split by bullets), take ONLY the first one
+            for separator in [" • ", " · ", " - ", " | "]:
+                if separator in suggested_edit:
+                    suggested_edit = suggested_edit.split(separator)[0].strip()
+                    logger.warning(f"[AI EDITOR] AI returned multiple items, taking first: {suggested_edit}")
+                    break
+
+            # Remove leading bullets/markers
+            for marker in ["• ", "- ", "* ", "→ ", "▸ ", "▪ ", "◦ ", "⚠️ "]:
                 if suggested_edit.startswith(marker):
                     suggested_edit = suggested_edit[len(marker):].strip()
+
             result["suggested_edit"] = suggested_edit
 
         # Calculate cost
