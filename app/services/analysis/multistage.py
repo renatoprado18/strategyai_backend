@@ -29,6 +29,13 @@ from app.utils.validation import (
 # Import prompt injection sanitization
 from app.core.security.prompt_sanitizer import sanitize_dict_recursive, sanitize_for_prompt
 
+# Import caching system
+from app.core.cache import (
+    cache_stage_result,
+    get_cached_stage_result,
+    generate_content_hash
+)
+
 logger = logging.getLogger(__name__)
 load_dotenv()
 
@@ -271,6 +278,76 @@ async def call_llm(
         raise Exception(f"OpenRouter API error: {e.response.status_code} - {e.response.text}")
     except Exception as e:
         raise Exception(f"LLM call failed: {str(e)}")
+
+
+# ============================================================================
+# CACHE-AWARE STAGE WRAPPER
+# ============================================================================
+
+async def run_stage_with_cache(
+    stage_name: str,
+    stage_function: callable,
+    company: str,
+    industry: str,
+    input_data: Dict[str, Any],
+    estimated_cost: float,
+    **stage_kwargs
+) -> Dict[str, Any]:
+    """
+    Execute a stage with automatic caching
+
+    Args:
+        stage_name: Name of the stage (e.g., "extraction", "strategy")
+        stage_function: The async function to call if cache miss
+        company: Company name (for cache key)
+        industry: Industry (for cache key)
+        input_data: Input data to hash for cache key
+        estimated_cost: Estimated cost of running this stage (for cache metrics)
+        **stage_kwargs: Additional kwargs to pass to stage_function
+
+    Returns:
+        Stage result dict (from cache or fresh execution)
+    """
+    try:
+        # Check cache first
+        cached_result = await get_cached_stage_result(
+            stage_name=stage_name,
+            company=company,
+            industry=industry,
+            input_data=input_data
+        )
+
+        if cached_result:
+            logger.info(f"[CACHE HIT] ✅ Stage '{stage_name}' loaded from cache (saves ${estimated_cost:.4f})")
+            # Ensure cached results have _usage_stats (set to 0 for cache hits)
+            if "_usage_stats" not in cached_result:
+                cached_result["_usage_stats"] = {"input_tokens": 0, "output_tokens": 0}
+            return cached_result
+
+        # Cache miss - execute stage
+        logger.info(f"[CACHE MISS] Stage '{stage_name}' - executing fresh...")
+        result = await stage_function(**stage_kwargs)
+
+        # Cache the result (async, non-blocking)
+        try:
+            await cache_stage_result(
+                stage_name=stage_name,
+                company=company,
+                industry=industry,
+                input_data=input_data,
+                stage_result=result,
+                cost=estimated_cost
+            )
+        except Exception as cache_error:
+            # Don't fail the stage if caching fails
+            logger.warning(f"[CACHE] Failed to cache stage '{stage_name}': {cache_error}")
+
+        return result
+
+    except Exception as e:
+        # If anything goes wrong with caching, just run the stage
+        logger.warning(f"[CACHE] Error in cache wrapper for '{stage_name}': {e}")
+        return await stage_function(**stage_kwargs)
 
 
 # ============================================================================
@@ -2210,8 +2287,28 @@ async def generate_multistage_analysis(
         analysis_logger.log_stage_start("extraction", MODEL_EXTRACTION, "Extract structured data from all sources")
         stage1_start = time.time()
 
-        extracted_data = await stage1_extract_data(
-            company, industry, website, challenge, apify_data, perplexity_data
+        # Prepare cache input (deterministic hash of all inputs)
+        stage1_input = {
+            "company": company,
+            "industry": industry,
+            "website": website,
+            "challenge": challenge,
+            "apify_hash": generate_content_hash(apify_data) if apify_data else None,
+            "perplexity_hash": generate_content_hash(perplexity_data) if perplexity_data else None
+        }
+
+        extracted_data = await run_stage_with_cache(
+            stage_name="extraction",
+            stage_function=stage1_extract_data,
+            company=company,
+            industry=industry,
+            input_data=stage1_input,
+            estimated_cost=0.002,  # ~$0.002 per Stage 1 call
+            # stage_kwargs:
+            website=website,
+            challenge=challenge,
+            apify_data=apify_data,
+            perplexity_data=perplexity_data
         )
 
         # Log stage completion
@@ -2262,8 +2359,22 @@ async def generate_multistage_analysis(
                 analysis_logger.log_stage_start("gap_analysis", MODEL_GAP_ANALYSIS, "Identify data gaps and run follow-up research")
                 stage2_start = time.time()
 
-                follow_up_data = await stage2_gap_analysis_and_followup(
-                    company, industry, extracted_data, perplexity_service
+                stage2_input = {
+                    "company": company,
+                    "industry": industry,
+                    "extracted_data_hash": generate_content_hash(extracted_data)
+                }
+
+                follow_up_data = await run_stage_with_cache(
+                    stage_name="gap_analysis",
+                    stage_function=stage2_gap_analysis_and_followup,
+                    company=company,
+                    industry=industry,
+                    input_data=stage2_input,
+                    estimated_cost=0.005,  # ~$0.005 per Stage 2 call (includes Perplexity)
+                    # stage_kwargs:
+                    extracted_data=extracted_data,
+                    perplexity_service=perplexity_service
                 )
 
                 # Log stage completion
@@ -2290,8 +2401,25 @@ async def generate_multistage_analysis(
         analysis_logger.log_stage_start("strategy", MODEL_STRATEGY, "Apply strategic frameworks (Porter, SWOT, BCG, etc.)")
         stage3_start = time.time()
 
-        strategic_analysis = await stage3_strategic_analysis(
-            company, industry, challenge, extracted_data,
+        stage3_input = {
+            "company": company,
+            "industry": industry,
+            "challenge": challenge,
+            "extracted_data_hash": generate_content_hash(extracted_data),
+            "enabled_sections": enabled_sections,
+            "data_quality_tier": tier
+        }
+
+        strategic_analysis = await run_stage_with_cache(
+            stage_name="strategy",
+            stage_function=stage3_strategic_analysis,
+            company=company,
+            industry=industry,
+            input_data=stage3_input,
+            estimated_cost=0.15,  # ~$0.15 per Stage 3 call (MOST EXPENSIVE!)
+            # stage_kwargs:
+            challenge=challenge,
+            extracted_data=extracted_data,
             enabled_sections=enabled_sections,
             data_quality_tier=tier
         )
@@ -2321,8 +2449,23 @@ async def generate_multistage_analysis(
                 analysis_logger.log_stage_start("competitive", MODEL_COMPETITIVE, "Generate competitive intelligence matrix")
                 stage4_start = time.time()
 
-                competitive_intel = await stage4_competitive_matrix(
-                    company, industry, extracted_data, strategic_analysis
+                stage4_input = {
+                    "company": company,
+                    "industry": industry,
+                    "extracted_data_hash": generate_content_hash(extracted_data),
+                    "strategic_analysis_hash": generate_content_hash(strategic_analysis)
+                }
+
+                competitive_intel = await run_stage_with_cache(
+                    stage_name="competitive",
+                    stage_function=stage4_competitive_matrix,
+                    company=company,
+                    industry=industry,
+                    input_data=stage4_input,
+                    estimated_cost=0.05,  # ~$0.05 per Stage 4 call
+                    # stage_kwargs:
+                    extracted_data=extracted_data,
+                    strategic_analysis=strategic_analysis
                 )
 
                 # Log stage completion
@@ -2351,8 +2494,20 @@ async def generate_multistage_analysis(
                 analysis_logger.log_stage_start("risk_scoring", MODEL_RISK_SCORING, "Quantify risks and prioritize recommendations")
                 stage5_start = time.time()
 
-                risk_priority = await stage5_risk_and_priority(
-                    company, strategic_analysis
+                stage5_input = {
+                    "company": company,
+                    "strategic_analysis_hash": generate_content_hash(strategic_analysis)
+                }
+
+                risk_priority = await run_stage_with_cache(
+                    stage_name="risk_scoring",
+                    stage_function=stage5_risk_and_priority,
+                    company=company,
+                    industry=industry,
+                    input_data=stage5_input,
+                    estimated_cost=0.04,  # ~$0.04 per Stage 5 call
+                    # stage_kwargs:
+                    strategic_analysis=strategic_analysis
                 )
 
                 # Log stage completion
@@ -2380,8 +2535,20 @@ async def generate_multistage_analysis(
             analysis_logger.log_stage_start("polish", MODEL_POLISH, "Polish analysis for executive readability")
             stage6_start = time.time()
 
-            final_analysis = await stage6_executive_polish(
-                company, strategic_analysis
+            stage6_input = {
+                "company": company,
+                "strategic_analysis_hash": generate_content_hash(strategic_analysis)
+            }
+
+            final_analysis = await run_stage_with_cache(
+                stage_name="polish",
+                stage_function=stage6_executive_polish,
+                company=company,
+                industry=industry,
+                input_data=stage6_input,
+                estimated_cost=0.01,  # ~$0.01 per Stage 6 call
+                # stage_kwargs:
+                strategic_analysis=strategic_analysis
             )
 
             # Log stage completion
