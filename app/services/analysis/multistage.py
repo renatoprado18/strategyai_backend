@@ -151,6 +151,15 @@ async def call_llm_with_retry(
                 logger.error(f"[{stage_name}] Full response: {response if 'response' in locals() else 'No response'}")
                 raise Exception(f"{stage_name} failed after {max_retries} attempts: {e}")
 
+        except ValueError as e:
+            # Content policy refusal - preserve ValueError type for fallback handling
+            last_error = e
+            logger.error(f"[{stage_name}] LLM call failed on attempt {attempt + 1}: {str(e)}")
+
+            if attempt == max_retries - 1:
+                # Re-raise as ValueError so fallback logic can catch it
+                raise ValueError(f"{stage_name} failed after {max_retries} attempts: {str(e)}")
+
         except Exception as e:
             last_error = e
             logger.error(f"[{stage_name}] LLM call failed on attempt {attempt + 1}: {str(e)}")

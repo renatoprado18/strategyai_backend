@@ -54,11 +54,11 @@ MODEL_SELECTION: Dict[str, Dict[str, Any]] = {
     "strategy": {
         "task_type": TaskType.CLIENT_FACING,
         "model_tier": ModelTier.PREMIUM,
-        "primary_model": "openai/gpt-4o",
+        "primary_model": "google/gemini-2.5-pro-preview",
         "fallback_model": "anthropic/claude-3.5-sonnet",
-        "reason": "CLIENT DELIVERABLE - Applies Porter, SWOT, BCG frameworks. Needs best strategic reasoning. Worth the cost!",
-        "context_window": "128k",
-        "cost_per_m": {"input": 2.50, "output": 10.00},
+        "reason": "CLIENT DELIVERABLE - Applies Porter, SWOT, BCG frameworks. Gemini Pro avoids GPT-4o content policy issues.",
+        "context_window": "1M",
+        "cost_per_m": {"input": 1.25, "output": 5.00},
         "quality_critical": True
     },
 

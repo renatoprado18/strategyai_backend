@@ -89,9 +89,10 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
         # Progress: Start
         emit_progress(submission_id, "initializing", f"Iniciando análise para {submission['company']}", 0)
 
-        # Step 1: Gather Apify data (web scraping, competitor research, trends, LinkedIn, news, social media)
-        print(f"[APIFY] Gathering enrichment data for {submission['company']}...")
-        emit_progress(submission_id, "data_gathering", "Coletando dados de 8 fontes (web, competidores, tendências, LinkedIn, notícias, redes sociais)", 10)
+        # Step 1: Apify data gathering DISABLED (too slow, Perplexity covers 90% of use cases)
+        # TODO: Re-enable when we have parallel execution or faster scraping
+        print(f"[APIFY] DISABLED - Skipping Apify data gathering (using Perplexity only)")
+        emit_progress(submission_id, "data_gathering", "Preparando análise com pesquisa avançada de mercado", 10)
         apify_data = None
         data_quality = {
             "website_scraped": False,
@@ -103,91 +104,14 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
             "news_found": False,
             "social_media_found": False,
             "sources_succeeded": 0,
-            "sources_failed": 0,
-            "failed_sources": [],
-            "quality_tier": "minimal"
+            "sources_failed": 8,
+            "failed_sources": ["apify_disabled"],
+            "quality_tier": "minimal",
+            "apify_disabled": True
         }
 
-        try:
-            apify_data = await gather_all_apify_data(
-                company=submission["company"],
-                industry=submission["industry"],
-                website=submission.get("website"),
-                linkedin_company=submission.get("linkedin_company"),
-                linkedin_founder=submission.get("linkedin_founder"),
-                challenge=submission.get("challenge"),
-            )
-            print(f"[APIFY] Data gathering completed for submission {submission_id}")
-
-            # Extract data quality metrics
-            if apify_data:
-                # Core sources
-                data_quality["website_scraped"] = apify_data.get("website_data", {}).get("scraped_successfully", False)
-                data_quality["competitors_found"] = apify_data.get("competitor_data", {}).get("competitors_found", 0)
-                data_quality["trends_researched"] = apify_data.get("industry_trends", {}).get("researched_successfully", False)
-                data_quality["company_enriched"] = apify_data.get("company_enrichment", {}).get("enriched_successfully", False)
-
-                # LinkedIn sources
-                data_quality["linkedin_company_found"] = apify_data.get("linkedin_company_data", {}).get("scraped_successfully", False)
-                data_quality["linkedin_founder_found"] = apify_data.get("linkedin_founder_data", {}).get("scraped_successfully", False)
-
-                # Public data sources
-                data_quality["news_found"] = apify_data.get("news_data", {}).get("researched_successfully", False)
-                data_quality["social_media_found"] = apify_data.get("social_media_data", {}).get("researched_successfully", False)
-
-                # Count successes from all 8 sources
-                successes = sum([
-                    data_quality["website_scraped"],
-                    data_quality["competitors_found"] > 0,
-                    data_quality["trends_researched"],
-                    data_quality["company_enriched"],
-                    data_quality["linkedin_company_found"],
-                    data_quality["linkedin_founder_found"],
-                    data_quality["news_found"],
-                    data_quality["social_media_found"]
-                ])
-                data_quality["sources_succeeded"] = successes
-                data_quality["sources_failed"] = 8 - successes
-
-                # Track failed sources
-                if not data_quality["website_scraped"] and submission.get("website"):
-                    data_quality["failed_sources"].append("website_scraping")
-                if data_quality["competitors_found"] == 0:
-                    data_quality["failed_sources"].append("competitor_research")
-                if not data_quality["trends_researched"]:
-                    data_quality["failed_sources"].append("industry_trends")
-                if not data_quality["company_enriched"]:
-                    data_quality["failed_sources"].append("company_enrichment")
-                if not data_quality["linkedin_company_found"]:
-                    data_quality["failed_sources"].append("linkedin_company")
-                if not data_quality["linkedin_founder_found"] and submission.get("linkedin_founder"):
-                    data_quality["failed_sources"].append("linkedin_founder")
-                if not data_quality["news_found"]:
-                    data_quality["failed_sources"].append("news_articles")
-                if not data_quality["social_media_found"]:
-                    data_quality["failed_sources"].append("social_media")
-
-                # Calculate quality tier
-                completion_rate = successes / 8
-                if completion_rate >= 0.75:
-                    data_quality["quality_tier"] = "full"
-                elif completion_rate >= 0.5:
-                    data_quality["quality_tier"] = "good"
-                elif completion_rate >= 0.25:
-                    data_quality["quality_tier"] = "partial"
-                else:
-                    data_quality["quality_tier"] = "minimal"
-
-                data_quality["data_completeness"] = f"{int(completion_rate * 100)}%"
-
-        except Exception as e:
-            print(f"[WARNING] Apify enrichment failed: {str(e)}. Continuing with basic analysis...")
-            apify_data = None
-            data_quality["sources_failed"] = 8
-            data_quality["failed_sources"] = ["all_sources_failed"]
-
-        # Progress: Apify complete
-        emit_progress(submission_id, "data_gathering", f"Dados coletados! {data_quality['sources_succeeded']}/8 fontes bem-sucedidas", 30)
+        # Progress: Skipped Apify
+        emit_progress(submission_id, "data_gathering", "Apify desabilitado - usando Perplexity para pesquisa de mercado", 30)
 
         # Step 1.5: Perplexity Deep Research
         print(f"[PERPLEXITY] Starting comprehensive market research for {submission['company']}...")
@@ -210,25 +134,26 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
                 print(f"[PERPLEXITY] ✅ Comprehensive research completed!")
                 perplexity_sources = int(perplexity_data.get('success_rate', '0/5').split('/')[0])
                 data_quality["perplexity_sources"] = perplexity_sources
-                data_quality["sources_succeeded"] += perplexity_sources
+                data_quality["sources_succeeded"] = perplexity_sources  # Only Perplexity now
 
-                # Update quality tier with Perplexity boost
-                total_sources = 13
-                total_succeeded = data_quality["sources_succeeded"]
+                # Update quality tier - Perplexity only (5 sources)
+                total_sources = 5  # 5 Perplexity sources (Apify disabled)
+                total_succeeded = perplexity_sources
                 completion_rate = total_succeeded / total_sources
 
-                if completion_rate >= 0.75:
+                # Adjusted tiers for Perplexity-only analysis
+                if completion_rate >= 0.80:  # 4-5 sources
                     data_quality["quality_tier"] = "legendary"
-                elif completion_rate >= 0.60:
+                elif completion_rate >= 0.60:  # 3 sources
                     data_quality["quality_tier"] = "full"
-                elif completion_rate >= 0.40:
+                elif completion_rate >= 0.40:  # 2 sources
                     data_quality["quality_tier"] = "good"
-                elif completion_rate >= 0.20:
+                elif completion_rate >= 0.20:  # 1 source
                     data_quality["quality_tier"] = "partial"
                 else:
                     data_quality["quality_tier"] = "minimal"
 
-                data_quality["data_completeness"] = f"{int(completion_rate * 100)}%"
+                data_quality["data_completeness"] = f"{int(completion_rate * 100)}% (Perplexity only)"
 
         except Exception as e:
             print(f"[WARNING] Perplexity research failed: {str(e)}. Continuing with Apify data only...")
