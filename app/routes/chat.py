@@ -10,9 +10,6 @@ from datetime import datetime, timezone
 import json
 from typing import Dict, Any
 
-from app.models.schemas import (
-    # Add any specific schemas needed for chat responses
-)
 from app.core.database import (
     get_submission,
     update_submission_status,
