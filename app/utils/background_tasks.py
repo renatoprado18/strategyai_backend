@@ -280,17 +280,19 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
                 apify_data=apify_data,
                 perplexity_data=perplexity_data,
                 run_all_stages=True,
-                perplexity_service=perplexity_service
+                perplexity_service=perplexity_service,
+                submission_id=submission_id  # Pass submission ID for comprehensive logging
             )
 
             processing_time = time.time() - start_time
 
-            # Cache the result (realistic cost based on actual token usage)
+            # Get ACTUAL cost from analysis metadata (comprehensive logging tracks real token usage)
             # Smart 6-stage pipeline: Premium models for client work, budget for backend
             # - Stages 1-2 (backend): Gemini Flash (~$0.005)
             # - Stages 3-6 (client-facing): GPT-4o, Gemini Pro, Claude Sonnet (~$0.40)
-            # Total: ~$0.41 per analysis - WORTH IT for quality client deliverables!
-            estimated_cost = 0.41
+            # Total: ~$0.41-0.47 per analysis - WORTH IT for quality client deliverables!
+            actual_cost = analysis.get("_metadata", {}).get("total_cost_actual_usd", 0.41)
+            estimated_cost = actual_cost  # Use actual cost for accurate tracking
             await cache_analysis_result(
                 company=submission["company"],
                 industry=submission["industry"],
