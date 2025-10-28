@@ -112,6 +112,19 @@ async def call_llm_with_retry(
                 max_tokens=max_tokens
             )
 
+            # Check for content policy refusals BEFORE validating JSON
+            refusal_patterns = [
+                "i'm sorry, i can't assist",
+                "i cannot assist",
+                "i can't help with that",
+                "i cannot help with that",
+                "desculpe, não posso ajudar",
+                "não posso ajudar com isso"
+            ]
+            if any(refusal in response.lower() for refusal in refusal_patterns):
+                logger.warning(f"[{stage_name}] Content policy refusal detected: {response[:100]}")
+                raise ValueError(f"Content policy refusal: {response[:100]}")
+
             # Validate JSON
             json.loads(response)  # Will raise JSONDecodeError if invalid
 
@@ -1501,15 +1514,7 @@ Recommend highest-scoring option WITH confidence level
             max_tokens=8000
         )
 
-        # Check for refusal patterns
-        if any(refusal in response.lower() for refusal in [
-            "i'm sorry, i can't assist",
-            "i cannot assist",
-            "desculpe, não posso ajudar",
-            "não posso ajudar com isso"
-        ]):
-            raise ValueError(f"GPT-4o content policy refusal detected: {response[:100]}")
-
+        # Refusal patterns are now checked inside call_llm_with_retry
         strategic_analysis = json.loads(response)
 
     except (json.JSONDecodeError, ValueError) as e:
