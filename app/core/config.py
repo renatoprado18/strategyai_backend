@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # ============================================================================
     # AUTHENTICATION & SECURITY
     # ============================================================================
-    jwt_secret_key: str = Field(..., description="Secret key for JWT signing")
+    jwt_secret: str = Field(..., description="Secret key for JWT signing")
     jwt_algorithm: str = Field(default="HS256", description="JWT algorithm")
     jwt_expiration_minutes: int = Field(default=10080, description="JWT expiration (default: 7 days)")
 
@@ -63,8 +63,8 @@ class Settings(BaseSettings):
     # ============================================================================
     # CACHING & RATE LIMITING (UPSTASH REDIS)
     # ============================================================================
-    upstash_redis_rest_url: str = Field(..., description="Upstash Redis REST URL")
-    upstash_redis_rest_token: str = Field(..., description="Upstash Redis REST token")
+    upstash_redis_url: str = Field(..., description="Upstash Redis REST URL")
+    upstash_redis_token: str = Field(..., description="Upstash Redis REST token")
 
     # ============================================================================
     # RATE LIMITING

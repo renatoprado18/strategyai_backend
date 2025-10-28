@@ -21,7 +21,7 @@ from app.models.schemas import (
 settings = get_settings()
 
 # JWT Configuration from settings
-JWT_SECRET = settings.jwt_secret_key
+JWT_SECRET = settings.jwt_secret
 JWT_ALGORITHM = settings.jwt_algorithm
 JWT_EXPIRATION_MINUTES = settings.jwt_expiration_minutes
 
