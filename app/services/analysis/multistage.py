@@ -347,7 +347,8 @@ async def run_stage_with_cache(
     except Exception as e:
         # If anything goes wrong with caching, just run the stage
         logger.warning(f"[CACHE] Error in cache wrapper for '{stage_name}': {e}")
-        return await stage_function(**stage_kwargs)
+        # CRITICAL FIX: Include company and industry in fallback call
+        return await stage_function(company=company, industry=industry, **stage_kwargs)
 
 
 # ============================================================================
@@ -1743,12 +1744,18 @@ Recommend highest-scoring option WITH confidence level
 
 async def stage6_executive_polish(
     company: str,
+    industry: str,
     strategic_analysis: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
     Stage 6: Polish report for executive readability
     Model: Claude Haiku (cheap but good writing)
     Cost: ~$0.015 per call
+
+    Args:
+        company: Company name
+        industry: Industry sector (for context, though not heavily used in this stage)
+        strategic_analysis: Output from stage 3
     """
 
     logger.info("[STAGE 6] Polishing report for executive readability...")
@@ -2053,12 +2060,18 @@ Retorne JSON em PORTUGUÊS BRASILEIRO:
 
 async def stage5_risk_and_priority(
     company: str,
+    industry: str,
     strategic_analysis: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
     Stage 5: Quantify risks and score recommendations by priority
     Model: Claude 3.5 Sonnet (best reasoning)
     Cost: ~$0.08 per call
+
+    Args:
+        company: Company name
+        industry: Industry sector (for context, though not heavily used in this stage)
+        strategic_analysis: Output from stage 3
     """
 
     logger.info("[STAGE 5] Quantifying risks and scoring recommendations...")
