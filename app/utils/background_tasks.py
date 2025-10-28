@@ -11,6 +11,7 @@ from datetime import datetime
 from app.core.database import (
     get_submission,
     update_submission_status,
+    update_submission_processing_state,
 )
 from app.services.analysis.multistage import generate_multistage_analysis
 from app.services.analysis.enhanced import validate_enhanced_analysis
@@ -86,12 +87,20 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
 
         print(f"[PROCESSING] Processing analysis for submission {submission_id}...")
 
-        # Progress: Start
+        # Progress: Start - Update to 'queued' state
+        await update_submission_processing_state(
+            submission_id=submission_id,
+            processing_state='queued'
+        )
         emit_progress(submission_id, "initializing", f"Iniciando análise para {submission['company']}", 0)
 
         # Step 1: Apify data gathering DISABLED (too slow, Perplexity covers 90% of use cases)
         # TODO: Re-enable when we have parallel execution or faster scraping
         print(f"[APIFY] DISABLED - Skipping Apify data gathering (using Perplexity only)")
+        await update_submission_processing_state(
+            submission_id=submission_id,
+            processing_state='data_gathering'
+        )
         emit_progress(submission_id, "data_gathering", "Preparando análise com pesquisa avançada de mercado", 10)
         apify_data = None
         data_quality = {
@@ -115,6 +124,11 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
 
         # Step 1.5: Perplexity Deep Research
         print(f"[PERPLEXITY] Starting comprehensive market research for {submission['company']}...")
+        # deep_research also maps to 'data_gathering' state
+        await update_submission_processing_state(
+            submission_id=submission_id,
+            processing_state='data_gathering'
+        )
         emit_progress(submission_id, "deep_research", "Iniciando pesquisa avançada de mercado com IA (Perplexity)", 40)
         perplexity_data = None
         perplexity_success = False
@@ -183,6 +197,10 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
             cache_age_hours = cached_analysis_result.get("cache_age_hours", 0)
 
             print(f"[CACHE] 🎯💰 CACHE HIT! Saved ${cost_saved:.2f} (age: {cache_age_hours:.1f}h)")
+            await update_submission_processing_state(
+                submission_id=submission_id,
+                processing_state='ai_analyzing'
+            )
             emit_progress(submission_id, "ai_analysis", f"✨ Análise recuperada do cache (economia de ${cost_saved:.2f}!)", 60)
 
         else:
@@ -192,6 +210,10 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
             else:
                 print(f"[CACHE] ❌ Cache miss - generating new analysis")
             print(f"[AI] 🚀 Generating strategic analysis for submission {submission_id}...")
+            await update_submission_processing_state(
+                submission_id=submission_id,
+                processing_state='ai_analyzing'
+            )
             emit_progress(submission_id, "ai_analysis", "Gerando análise estratégica com IA (pipeline de 6 etapas)", 60)
 
             start_time = time.time()
@@ -259,12 +281,17 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
         processing_metadata_json = json.dumps(processing_meta, ensure_ascii=False)
 
         # Progress: Saving to database
+        await update_submission_processing_state(
+            submission_id=submission_id,
+            processing_state='finalizing'
+        )
         emit_progress(submission_id, "finalizing", "Salvando relatório no banco de dados", 95)
 
-        # Update submission
-        await update_submission_status(
+        # Update submission - now with completed state
+        await update_submission_processing_state(
             submission_id=submission_id,
-            status="completed",
+            processing_state='completed',
+            user_status='ready',
             report_json=report_json,
             data_quality_json=data_quality_json,
             processing_metadata=processing_metadata_json,
@@ -293,10 +320,11 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
             processing_meta_with_confidence["confidence_score"] = confidence_score
             processing_meta_with_confidence["confidence_breakdown"] = confidence_breakdown
 
-            # Save confidence
-            await update_submission_status(
+            # Save confidence (maintain completed state)
+            await update_submission_processing_state(
                 submission_id=submission_id,
-                status="completed",
+                processing_state='completed',
+                user_status='ready',
                 report_json=report_json,
                 data_quality_json=data_quality_json,
                 processing_metadata=json.dumps(processing_meta_with_confidence, ensure_ascii=False),
@@ -317,9 +345,10 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
         emit_progress(submission_id, "failed", f"❌ Erro: {error_message[:100]}", 0)
 
         # Update submission with failure
-        await update_submission_status(
+        await update_submission_processing_state(
             submission_id=submission_id,
-            status="failed",
+            processing_state='failed',
+            user_status='submitted',
             error_message=error_message,
         )
 

@@ -1520,7 +1520,7 @@ Recommend highest-scoring option WITH confidence level
             prompt=prompt,
             system_prompt=system_prompt,
             temperature=0.8,  # Higher for creative strategic thinking
-            max_tokens=8000
+            max_tokens=16000
         )
 
         # Refusal patterns are now checked inside call_llm_with_retry
@@ -1541,7 +1541,7 @@ Recommend highest-scoring option WITH confidence level
                 prompt=prompt,
                 system_prompt=system_prompt,
                 temperature=0.8,
-                max_tokens=8000
+                max_tokens=16000
             )
             strategic_analysis = json.loads(response)
 
@@ -1558,7 +1558,7 @@ Recommend highest-scoring option WITH confidence level
                 prompt=prompt,
                 system_prompt=system_prompt,
                 temperature=0.8,
-                max_tokens=8000
+                max_tokens=16000
             )
             strategic_analysis = json.loads(response)
 

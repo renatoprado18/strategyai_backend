@@ -19,6 +19,7 @@ from app.core.security.rate_limiter import get_redis_client
 # Import all routers
 from app.routes import analysis, reports, chat, intelligence, admin
 from app.routes.auth import router as auth_router
+from app.routes.user_actions import router as user_actions_router
 
 # Setup
 settings = get_settings()
@@ -207,6 +208,9 @@ app.include_router(intelligence.router, tags=["intelligence"])
 
 # Admin & system routes
 app.include_router(admin.router, tags=["admin"])
+
+# User action routes (admin dashboard actions)
+app.include_router(user_actions_router, tags=["user_actions"])
 
 
 # ============================================================================

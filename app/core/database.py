@@ -160,6 +160,107 @@ async def update_submission_status(
         raise
 
 
+async def update_submission_processing_state(
+    submission_id: int,
+    processing_state: str,
+    user_status: Optional[str] = None,
+    report_json: Optional[str] = None,
+    error_message: Optional[str] = ...,  # Use ellipsis as sentinel
+    data_quality_json: Optional[str] = None,
+    processing_metadata: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Update submission processing_state and user_status with backward compatibility
+
+    Args:
+        submission_id: ID of the submission to update
+        processing_state: New processing state ('queued', 'data_gathering', 'ai_analyzing', 'finalizing', 'completed', 'failed')
+        user_status: Optional user-facing status. If not provided, auto-computed from processing_state
+        report_json: Optional report JSON
+        error_message: Optional error message (use ellipsis as sentinel)
+        data_quality_json: Optional data quality JSON
+        processing_metadata: Optional processing metadata JSON
+
+    Returns:
+        Updated submission dict or None if failed
+
+    Processing State → User Status Mapping:
+        'queued' → 'submitted'
+        'data_gathering' → 'analyzing'
+        'ai_analyzing' → 'analyzing'
+        'finalizing' → 'analyzing'
+        'completed' → 'ready'
+        'failed' → 'submitted'
+
+    Backward Compatibility (old 'status' field):
+        processing_state='completed' + user_status='ready' → status='completed'
+        processing_state='failed' → status='failed'
+        processing_state in ('queued', 'data_gathering', 'ai_analyzing', 'finalizing') → status='processing'
+    """
+    try:
+        # Auto-compute user_status from processing_state if not provided
+        if user_status is None:
+            processing_to_user_status = {
+                'queued': 'submitted',
+                'data_gathering': 'analyzing',
+                'ai_analyzing': 'analyzing',
+                'finalizing': 'analyzing',
+                'completed': 'ready',
+                'failed': 'submitted'
+            }
+            user_status = processing_to_user_status.get(processing_state, 'submitted')
+
+        # Compute backward-compatible 'status' field
+        if processing_state == 'completed' and user_status == 'ready':
+            backward_status = 'completed'
+        elif processing_state == 'failed':
+            backward_status = 'failed'
+        elif processing_state in ('queued', 'data_gathering', 'ai_analyzing', 'finalizing'):
+            backward_status = 'processing'
+        else:
+            # Default fallback
+            backward_status = 'processing'
+
+        # Build update data
+        data = {
+            "processing_state": processing_state,
+            "user_status": user_status,
+            "status": backward_status,  # Backward compatibility
+            "updated_at": datetime.utcnow().isoformat()
+        }
+
+        # Optional fields
+        if report_json is not None:
+            data["report_json"] = report_json
+
+        # Handle error_message: if explicitly passed (even as None), update it
+        if error_message is not ...:
+            data["error_message"] = error_message
+
+        if data_quality_json is not None:
+            data["data_quality_json"] = data_quality_json
+
+        if processing_metadata is not None:
+            data["processing_metadata"] = processing_metadata
+
+        # Log state transition
+        print(f"[STATE_TRANSITION] Submission {submission_id}: "
+              f"processing_state='{processing_state}', user_status='{user_status}', "
+              f"status='{backward_status}' (backward compat)")
+
+        # Use service client to bypass RLS
+        response = supabase_service.table(TABLE_NAME).update(data).eq("id", submission_id).execute()
+
+        if not response.data:
+            raise Exception(f"Failed to update submission {submission_id}")
+
+        return response.data[0] if response.data else None
+
+    except Exception as e:
+        print(f"[ERROR] Failed to update submission processing state: {str(e)}")
+        raise
+
+
 async def get_submissions_by_ip_today(ip_address: str) -> int:
     """
     Get count of submissions from an IP today.
