@@ -1527,19 +1527,40 @@ Recommend highest-scoring option WITH confidence level
         strategic_analysis = json.loads(response)
 
     except (json.JSONDecodeError, ValueError) as e:
-        logger.warning(f"[STAGE 3] GPT-4o failed (likely content policy refusal), falling back to Gemini Pro...")
+        logger.warning(f"[STAGE 3] Primary model failed (likely content policy refusal or rate limit), falling back to paid fallback...")
         logger.warning(f"[STAGE 3] Original error: {str(e)}")
 
-        # Fallback to Gemini Pro
-        response, usage_stats = await call_llm_with_retry(
-            stage_name="STAGE 3 (FALLBACK)",
-            model=MODEL_COMPETITIVE,  # Gemini 2.5 Pro
-            prompt=prompt,
-            system_prompt=system_prompt,
-            temperature=0.8,
-            max_tokens=8000
-        )
-        strategic_analysis = json.loads(response)
+        try:
+            # Fallback 1: Try paid fallback (Claude Sonnet)
+            stage_config = get_stage_config("strategy")
+            fallback_model = stage_config.get("fallback_model", MODEL_COMPETITIVE)
+
+            response, usage_stats = await call_llm_with_retry(
+                stage_name="STAGE 3 (FALLBACK 1)",
+                model=fallback_model,
+                prompt=prompt,
+                system_prompt=system_prompt,
+                temperature=0.8,
+                max_tokens=8000
+            )
+            strategic_analysis = json.loads(response)
+
+        except Exception as e2:
+            logger.warning(f"[STAGE 3] Paid fallback failed, trying FREE fallback model...")
+            logger.warning(f"[STAGE 3] Fallback 1 error: {str(e2)}")
+
+            # Fallback 2: Use free model (Gemini Flash Free)
+            free_fallback = stage_config.get("free_fallback_model", "google/gemini-2.0-flash-exp:free")
+
+            response, usage_stats = await call_llm_with_retry(
+                stage_name="STAGE 3 (FREE FALLBACK)",
+                model=free_fallback,
+                prompt=prompt,
+                system_prompt=system_prompt,
+                temperature=0.8,
+                max_tokens=8000
+            )
+            strategic_analysis = json.loads(response)
 
     # ========================================================================
     # HALLUCINATION DETECTION & AUTO-FIX
@@ -1729,16 +1750,36 @@ Return JSON only. No markdown, no explanations.
 
     system_prompt = "You are an expert at executive communications. Polish for clarity and impact. Preserve structure and data."
 
-    response, usage_stats = await call_llm_with_retry(
-        stage_name="STAGE 6",
-        model=MODEL_POLISH,
-        prompt=prompt,
-        system_prompt=system_prompt,
-        temperature=0.5,  # Moderate creativity
-        max_tokens=10000
-    )
+    usage_stats = {}
+    try:
+        response, usage_stats = await call_llm_with_retry(
+            stage_name="STAGE 6",
+            model=MODEL_POLISH,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=0.5,  # Moderate creativity
+            max_tokens=10000
+        )
+        polished_analysis = json.loads(response)
 
-    polished_analysis = json.loads(response)
+    except Exception as e:
+        logger.warning(f"[STAGE 6] Primary model failed, trying FREE fallback model...")
+        logger.warning(f"[STAGE 6] Error: {str(e)}")
+
+        # Fallback: Use free model (Gemini Flash Free)
+        stage_config = get_stage_config("polish")
+        free_fallback = stage_config.get("free_fallback_model", "google/gemini-2.0-flash-exp:free")
+
+        response, usage_stats = await call_llm_with_retry(
+            stage_name="STAGE 6 (FREE FALLBACK)",
+            model=free_fallback,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=0.5,
+            max_tokens=10000
+        )
+        polished_analysis = json.loads(response)
+
     logger.info(f"[STAGE 6] ✅ Report polished for executive readability")
 
     # Add usage stats to result
@@ -1891,16 +1932,36 @@ Retorne JSON em PORTUGUÊS BRASILEIRO:
 
     system_prompt = "Você é um analista de inteligência competitiva brasileira. Crie matrizes estruturadas baseadas em dados. Liste TODOS os concorrentes relevantes do mercado (mínimo 5-7). Output somente JSON em português."
 
-    response, usage_stats = await call_llm_with_retry(
-        stage_name="STAGE 4",
-        model=MODEL_COMPETITIVE,
-        prompt=prompt,
-        system_prompt=system_prompt,
-        temperature=0.4,
-        max_tokens=4000
-    )
+    usage_stats = {}
+    try:
+        response, usage_stats = await call_llm_with_retry(
+            stage_name="STAGE 4",
+            model=MODEL_COMPETITIVE,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=0.4,
+            max_tokens=4000
+        )
+        competitive_intel = json.loads(response)
 
-    competitive_intel = json.loads(response)
+    except Exception as e:
+        logger.warning(f"[STAGE 4] Primary model failed, trying FREE fallback model...")
+        logger.warning(f"[STAGE 4] Error: {str(e)}")
+
+        # Fallback: Use free model (Gemini Flash Free)
+        stage_config = get_stage_config("competitive")
+        free_fallback = stage_config.get("free_fallback_model", "google/gemini-2.0-flash-exp:free")
+
+        response, usage_stats = await call_llm_with_retry(
+            stage_name="STAGE 4 (FREE FALLBACK)",
+            model=free_fallback,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=0.4,
+            max_tokens=4000
+        )
+        competitive_intel = json.loads(response)
+
     num_competitors = len(competitive_intel.get('analise_competitiva_detalhada', []))
     logger.info(f"[STAGE 4] ✅ Generated competitive matrix with {num_competitors} competitors")
 
@@ -2068,16 +2129,36 @@ REGRA ABSOLUTA: TODO output deve estar em português brasileiro (pt-BR) profissi
 
 Seja específico, quantitativo e acionável. Use português natural e profissional."""
 
-    response, usage_stats = await call_llm_with_retry(
-        stage_name="STAGE 5",
-        model=MODEL_RISK_SCORING,
-        prompt=prompt,
-        system_prompt=system_prompt,
-        temperature=0.5,
-        max_tokens=6000
-    )
+    usage_stats = {}
+    try:
+        response, usage_stats = await call_llm_with_retry(
+            stage_name="STAGE 5",
+            model=MODEL_RISK_SCORING,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=0.5,
+            max_tokens=6000
+        )
+        risk_priority = json.loads(response)
 
-    risk_priority = json.loads(response)
+    except Exception as e:
+        logger.warning(f"[STAGE 5] Primary model failed, trying FREE fallback model...")
+        logger.warning(f"[STAGE 5] Error: {str(e)}")
+
+        # Fallback: Use free model (Gemini Flash Free)
+        stage_config = get_stage_config("risk_scoring")
+        free_fallback = stage_config.get("free_fallback_model", "google/gemini-2.0-flash-exp:free")
+
+        response, usage_stats = await call_llm_with_retry(
+            stage_name="STAGE 5 (FREE FALLBACK)",
+            model=free_fallback,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=0.5,
+            max_tokens=6000
+        )
+        risk_priority = json.loads(response)
+
     logger.info(f"[STAGE 5] ✅ Scored {len(risk_priority.get('risk_analysis', []))} risks, "
                f"{len(risk_priority.get('recommendation_scoring', []))} recommendations")
 
