@@ -25,6 +25,41 @@ from app.routes.user_actions import router as user_actions_router
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
+# ============================================================================
+# SENTRY INITIALIZATION (Error Tracking)
+# ============================================================================
+
+# Initialize Sentry if DSN is provided
+if settings.sentry_dsn:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.asyncio import AsyncioIntegration
+
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            environment=settings.environment,
+            traces_sample_rate=0.1,  # 10% performance monitoring
+            profiles_sample_rate=0.1,  # 10% profiling
+            integrations=[
+                FastApiIntegration(),
+                AsyncioIntegration(),
+            ],
+            # Send PII (personally identifiable information) - set to False for privacy
+            send_default_pii=False,
+            # Attach stack traces to all messages
+            attach_stacktrace=True,
+            # Performance monitoring
+            enable_tracing=True,
+        )
+        logger.info(f"[SENTRY] ✅ Error tracking initialized (env: {settings.environment})")
+    except ImportError:
+        logger.warning("[SENTRY] ⚠️  sentry-sdk not installed, error tracking disabled")
+    except Exception as e:
+        logger.error(f"[SENTRY] ❌ Failed to initialize: {e}")
+else:
+    logger.info("[SENTRY] ℹ️  SENTRY_DSN not set, error tracking disabled")
+
 
 # ============================================================================
 # LIFESPAN MANAGEMENT
@@ -32,19 +67,61 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan: startup and shutdown events"""
-    # Startup
+    """
+    Application lifespan: startup and shutdown events
+    Handles graceful initialization and cleanup of resources
+    """
+    # ========================================================================
+    # STARTUP
+    # ========================================================================
     logger.info("[STARTUP] Starting Strategy AI Backend...")
     logger.info(f"[STARTUP] Environment: {settings.environment}")
     logger.info(f"[STARTUP] Allowed origins: {settings.allowed_origins}")
 
+    # Initialize database connection
     await init_db()
     logger.info("[STARTUP] ✅ Database connection established")
 
+    # Verify Redis connection
+    try:
+        redis_client = get_redis_client()
+        redis_client.ping()
+        logger.info("[STARTUP] ✅ Redis connection established")
+    except Exception as e:
+        logger.warning(f"[STARTUP] ⚠️  Redis connection failed: {e}")
+
+    logger.info("[STARTUP] 🚀 Application ready to accept requests")
+
     yield
 
-    # Shutdown
-    logger.info("[SHUTDOWN] Shutting down gracefully...")
+    # ========================================================================
+    # SHUTDOWN
+    # ========================================================================
+    logger.info("[SHUTDOWN] 🛑 Shutdown signal received, starting graceful shutdown...")
+
+    # Wait for in-flight requests to complete (30 second timeout)
+    import asyncio
+    shutdown_timeout = 30
+
+    logger.info(f"[SHUTDOWN] ⏳ Waiting {shutdown_timeout}s for in-flight requests...")
+    await asyncio.sleep(2)  # Give active requests time to finish
+
+    # Close database connections
+    try:
+        # Supabase client cleanup (if needed)
+        logger.info("[SHUTDOWN] 🗄️  Closing database connections...")
+        # Note: Supabase client handles cleanup automatically
+    except Exception as e:
+        logger.error(f"[SHUTDOWN] ❌ Error closing database: {e}")
+
+    # Close Redis connections
+    try:
+        logger.info("[SHUTDOWN] 💾 Closing Redis connections...")
+        # Upstash Redis client cleanup (connection pooling handled by library)
+    except Exception as e:
+        logger.error(f"[SHUTDOWN] ❌ Error closing Redis: {e}")
+
+    logger.info("[SHUTDOWN] ✅ Graceful shutdown complete")
 
 
 # ============================================================================

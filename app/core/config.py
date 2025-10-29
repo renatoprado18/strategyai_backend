@@ -86,6 +86,11 @@ class Settings(BaseSettings):
     cache_ttl_enrichment: int = Field(default=86400, description="Enrichment cache TTL (24 hours)")
 
     # ============================================================================
+    # MONITORING & ERROR TRACKING
+    # ============================================================================
+    sentry_dsn: str = Field(default="", description="Sentry DSN for error tracking (optional)")
+
+    # ============================================================================
     # ANALYSIS CONFIGURATION
     # ============================================================================
     analysis_timeout_seconds: int = Field(default=300, description="Max analysis time (5 minutes)")

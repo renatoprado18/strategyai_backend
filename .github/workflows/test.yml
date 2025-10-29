@@ -1,0 +1,64 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [develop]
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  test:
+    name: Run Test Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-asyncio black flake8
+
+      - name: Format check
+        run: |
+          black --check app/ tests/ scripts/ --line-length 120
+        continue-on-error: true
+
+      - name: Lint
+        run: |
+          flake8 app/ tests/ scripts/ --max-line-length=120 --ignore=E501,W503,E203
+        continue-on-error: true
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-report=html
+        env:
+          SUPABASE_URL: "https://mock.supabase.co"
+          SUPABASE_SERVICE_KEY: "mock_key"
+          UPSTASH_REDIS_URL: "redis://mock:6379"
+          UPSTASH_REDIS_TOKEN: "mock_token"
+          OPENROUTER_API_KEY: "sk-or-v1-mock"
+          JWT_SECRET: "test_secret_key_for_ci"
+          ALLOWED_ORIGINS: "http://localhost:3000"
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: htmlcov/
+        if: always()
+
+      - name: Test summary
+        run: |
+          echo "✅ Tests completed"
+          echo "📊 Check coverage report in artifacts"
