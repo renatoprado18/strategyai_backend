@@ -4,15 +4,19 @@ Report Management Routes - PDF Export, Confidence Scoring, and AI Editing
 This module contains routes for:
 - Listing all submissions (admin)
 - Exporting reports as PDF (admin)
+- Exporting reports as Markdown (admin) - NEW
+- Importing markdown and generating PDF (admin) - NEW
 - Calculating confidence scores (admin)
 - AI-powered report editing (admin)
 - Applying edits to reports (admin)
 - Regenerating PDFs with edits (admin)
 """
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Response, UploadFile, File
+from fastapi.responses import StreamingResponse, PlainTextResponse, FileResponse
 from datetime import datetime, timezone
 import json
+import os
+from pathlib import Path
 
 # Import schemas
 from app.models.schemas import (
@@ -43,6 +47,8 @@ from app.services.ai.editor import (
     apply_edit_to_json_path,
     extract_section_context,
 )
+from app.services.markdown_generator import generate_markdown_from_report
+from app.services.markdown_parser import parse_markdown_to_report, MarkdownParseError
 
 # Initialize router with prefix
 router = APIRouter(prefix="/api/admin")
@@ -498,3 +504,239 @@ async def regenerate_pdf_with_edits(
         import traceback
         traceback.print_exc()
         return RegeneratePDFResponse(success=False, error=str(e))
+
+
+# ============================================================================
+# MARKDOWN EXPORT/IMPORT
+# ============================================================================
+
+@router.get("/submissions/{submission_id}/export-markdown")
+async def export_submission_markdown(
+    submission_id: int,
+    current_user: dict = RequireAuth,
+):
+    """
+    Export submission report as Markdown (Protected Admin endpoint)
+
+    Generates clean, editable markdown from report JSON.
+    Markdown can be edited in any text editor and re-uploaded.
+
+    Requires valid JWT token in Authorization header
+    Returns markdown file (.md)
+    """
+    try:
+        print(f"[MARKDOWN] User {current_user['email']} exporting markdown for submission {submission_id}")
+
+        # Get submission
+        submission = await get_submission(submission_id)
+        if not submission:
+            raise HTTPException(status_code=404, detail="Submission not found")
+
+        # Use edited_json if available, otherwise report_json
+        report_json_str = submission.get('edited_json') or submission.get('report_json')
+        if not report_json_str:
+            raise HTTPException(status_code=400, detail="Report not yet generated")
+
+        # Parse report JSON
+        try:
+            report_json = json.loads(report_json_str)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid report JSON")
+
+        # Build submission data for markdown generator
+        submission_data = {
+            "id": submission_id,
+            "company": submission.get("company", ""),
+            "industry": submission.get("industry", ""),
+            "website": submission.get("website", ""),
+            "challenge": submission.get("challenge", ""),
+            "name": submission.get("name", ""),
+            "updated_at": submission.get("last_edited_at") or submission.get("updated_at", "")
+        }
+
+        # Generate markdown
+        print(f"[MARKDOWN] Generating markdown for submission {submission_id}...")
+        markdown_content = generate_markdown_from_report(submission_data, report_json)
+
+        if not markdown_content:
+            raise HTTPException(status_code=500, detail="Markdown generation failed - empty output")
+
+        print(f"[MARKDOWN] Markdown generated successfully ({len(markdown_content)} characters)")
+
+        # Create filename
+        company_slug = submission['company'].replace(' ', '-').lower()
+        date_str = datetime.now().strftime('%Y-%m-%d')
+        filename = f"analise-estrategica-{company_slug}-{date_str}.md"
+
+        # Return markdown file
+        return Response(
+            content=markdown_content,
+            media_type="text/markdown; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "text/markdown; charset=utf-8",
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Markdown export error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/export-instructions")
+async def export_markdown_instructions(current_user: dict = RequireAuth):
+    """
+    Download markdown editing instructions (Protected Admin endpoint)
+
+    Returns Portuguese instruction file explaining how to edit markdown reports.
+    Includes:
+    - Markdown syntax guide
+    - How to use with ChatGPT
+    - Upload instructions
+    - Troubleshooting tips
+
+    Requires valid JWT token in Authorization header
+    """
+    try:
+        print(f"[MARKDOWN] User {current_user['email']} downloading instruction guide")
+
+        # Path to instruction file
+        instruction_path = Path("app/static/COMO_EDITAR.md")
+
+        if not instruction_path.exists():
+            raise HTTPException(status_code=404, detail="Instruction file not found")
+
+        # Return instruction file
+        return FileResponse(
+            path=str(instruction_path),
+            media_type="text/markdown; charset=utf-8",
+            headers={
+                "Content-Disposition": 'attachment; filename="COMO_EDITAR.md"',
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Instructions export error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/submissions/{submission_id}/import-markdown-and-pdf")
+async def import_markdown_and_generate_pdf(
+    submission_id: int,
+    file: UploadFile = File(...),
+    current_user: dict = RequireAuth,
+):
+    """
+    Import edited markdown and generate PDF (Protected Admin endpoint)
+
+    Workflow:
+    1. Parse uploaded markdown file
+    2. Validate structure
+    3. Update edited_json in database
+    4. Generate PDF from updated JSON
+    5. Return PDF for download
+
+    This is the "quick workflow" - user uploads markdown and immediately gets PDF.
+
+    Requires valid JWT token in Authorization header
+    Returns PDF file
+    """
+    try:
+        print(f"[MARKDOWN] User {current_user['email']} importing markdown for submission {submission_id}")
+
+        # Validate file type
+        if not file.filename.endswith('.md'):
+            raise HTTPException(status_code=400, detail="File must be a .md (markdown) file")
+
+        # Read markdown content
+        markdown_content = await file.read()
+        markdown_text = markdown_content.decode('utf-8')
+
+        print(f"[MARKDOWN] Received markdown file: {file.filename} ({len(markdown_text)} characters)")
+
+        # Parse markdown to JSON
+        try:
+            report_json, warnings = parse_markdown_to_report(markdown_text)
+            print(f"[MARKDOWN] Parsed successfully with {len(warnings)} warnings")
+
+            if warnings:
+                for warning in warnings:
+                    print(f"[MARKDOWN WARNING] {warning}")
+
+        except MarkdownParseError as e:
+            print(f"[MARKDOWN ERROR] Parse failed: {e}")
+            raise HTTPException(status_code=400, detail=f"Markdown parsing failed: {str(e)}")
+
+        # Get submission
+        submission = await get_submission(submission_id)
+        if not submission:
+            raise HTTPException(status_code=404, detail="Submission not found")
+
+        # Update edited_json in database
+        from app.core.database import update_submission_status
+
+        # Increment edit count
+        current_edit_count = submission.get('edit_count', 0)
+
+        await update_submission_status(
+            submission_id=submission_id,
+            status=submission['status'],  # Keep existing status
+            report_json=submission.get('report_json'),  # Keep original
+            data_quality_json=submission.get('data_quality_json'),  # Keep existing
+            processing_metadata=submission.get('processing_metadata'),  # Keep existing
+            edited_json=json.dumps(report_json),  # Update with parsed markdown
+            edit_count=current_edit_count + 1,
+            last_edited_at=datetime.now(timezone.utc).isoformat()
+        )
+
+        print(f"[MARKDOWN] Updated database with parsed report (edit #{current_edit_count + 1})")
+
+        # Build submission data for PDF generation
+        submission_data = {
+            "id": submission_id,
+            "company": submission.get("company", ""),
+            "industry": submission.get("industry", ""),
+            "website": submission.get("website", ""),
+            "challenge": submission.get("challenge", ""),
+            "name": submission.get("name", ""),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+
+        # Generate PDF from updated JSON
+        print(f"[MARKDOWN] Generating PDF from imported markdown...")
+        pdf_bytes = generate_pdf_from_report(submission_data, report_json)
+
+        if not pdf_bytes or len(pdf_bytes) == 0:
+            raise HTTPException(status_code=500, detail="PDF generation failed after markdown import")
+
+        print(f"[MARKDOWN] PDF generated successfully ({len(pdf_bytes)} bytes)")
+
+        # Create filename
+        company_slug = submission['company'].replace(' ', '-').lower()
+        date_str = datetime.now().strftime('%Y-%m-%d')
+        filename = f"relatorio-editado-{company_slug}-{date_str}.pdf"
+
+        # Return PDF
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(pdf_bytes)),
+                "X-Markdown-Warnings": str(len(warnings)),
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Markdown import error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))

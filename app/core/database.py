@@ -129,8 +129,11 @@ async def update_submission_status(
     error_message: Optional[str] = ...,  # Use ellipsis as sentinel
     data_quality_json: Optional[str] = None,
     processing_metadata: Optional[str] = None,
+    edited_json: Optional[str] = None,
+    edit_count: Optional[int] = None,
+    last_edited_at: Optional[str] = None,
 ):
-    """Update submission status, report, and quality metadata"""
+    """Update submission status, report, and quality metadata (including markdown edits)"""
     try:
         data = {
             "status": status,
@@ -149,6 +152,16 @@ async def update_submission_status(
 
         if processing_metadata is not None:
             data["processing_metadata"] = processing_metadata
+
+        # Markdown editing support
+        if edited_json is not None:
+            data["edited_json"] = edited_json
+
+        if edit_count is not None:
+            data["edit_count"] = edit_count
+
+        if last_edited_at is not None:
+            data["last_edited_at"] = last_edited_at
 
         # Use service client to bypass RLS
         response = supabase_service.table(TABLE_NAME).update(data).eq("id", submission_id).execute()
