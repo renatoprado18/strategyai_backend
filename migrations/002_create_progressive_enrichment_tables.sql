@@ -48,19 +48,19 @@ CREATE TABLE IF NOT EXISTS progressive_enrichment_sessions (
 
     -- Metadata
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-
-    -- Indexes for fast lookups
-    INDEX idx_session_id (session_id),
-    INDEX idx_website_url (website_url),
-    INDEX idx_user_email (user_email),
-    INDEX idx_status (status),
-    INDEX idx_created_at (created_at DESC)
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Add comment
 COMMENT ON TABLE progressive_enrichment_sessions IS
 'Tracks progressive enrichment sessions with 3-layer execution (Layer 1: instant, Layer 2: structured, Layer 3: AI)';
+
+-- Create indexes separately
+CREATE INDEX idx_prog_enrich_session_id ON progressive_enrichment_sessions(session_id);
+CREATE INDEX idx_prog_enrich_website_url ON progressive_enrichment_sessions(website_url);
+CREATE INDEX idx_prog_enrich_user_email ON progressive_enrichment_sessions(user_email);
+CREATE INDEX idx_prog_enrich_status ON progressive_enrichment_sessions(status);
+CREATE INDEX idx_prog_enrich_created_at ON progressive_enrichment_sessions(created_at DESC);
 
 
 -- ============================================================================
@@ -81,15 +81,17 @@ CREATE TABLE IF NOT EXISTS social_media_cache (
     validated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     expires_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '24 hours'),
 
-    -- Indexes
-    UNIQUE (platform, handle),
-    INDEX idx_platform_handle (platform, handle),
-    INDEX idx_expires_at (expires_at)
+    -- Constraints
+    UNIQUE (platform, handle)
 );
 
 -- Add comment
 COMMENT ON TABLE social_media_cache IS
 'Caches social media handle validation results (24-hour TTL) to avoid repeated validation';
+
+-- Create indexes separately
+CREATE INDEX idx_social_media_platform_handle ON social_media_cache(platform, handle);
+CREATE INDEX idx_social_media_expires_at ON social_media_cache(expires_at);
 
 
 -- ============================================================================
@@ -109,17 +111,17 @@ CREATE TABLE IF NOT EXISTS field_validation_history (
     confidence DECIMAL(5, 2),  -- 0.00 to 100.00
 
     -- Metadata
-    validated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-
-    -- Indexes
-    INDEX idx_session_id (session_id),
-    INDEX idx_field_name (field_name),
-    INDEX idx_validated_at (validated_at DESC)
+    validated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Add comment
 COMMENT ON TABLE field_validation_history IS
 'Tracks all field validation attempts for analytics and debugging';
+
+-- Create indexes separately
+CREATE INDEX idx_field_validation_session_id ON field_validation_history(session_id);
+CREATE INDEX idx_field_validation_field_name ON field_validation_history(field_name);
+CREATE INDEX idx_field_validation_validated_at ON field_validation_history(validated_at DESC);
 
 
 -- ============================================================================
@@ -145,18 +147,18 @@ CREATE TABLE IF NOT EXISTS auto_fill_suggestions (
 
     -- Metadata
     suggested_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    user_action_at TIMESTAMP WITH TIME ZONE,
-
-    -- Indexes
-    INDEX idx_session_id (session_id),
-    INDEX idx_field_name (field_name),
-    INDEX idx_confidence (confidence DESC),
-    INDEX idx_layer_number (layer_number)
+    user_action_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Add comment
 COMMENT ON TABLE auto_fill_suggestions IS
 'Tracks all auto-fill suggestions to measure accuracy and user acceptance';
+
+-- Create indexes separately
+CREATE INDEX idx_auto_fill_session_id ON auto_fill_suggestions(session_id);
+CREATE INDEX idx_auto_fill_field_name ON auto_fill_suggestions(field_name);
+CREATE INDEX idx_auto_fill_confidence ON auto_fill_suggestions(confidence DESC);
+CREATE INDEX idx_auto_fill_layer_number ON auto_fill_suggestions(layer_number);
 
 
 -- ============================================================================
@@ -181,16 +183,18 @@ CREATE TABLE IF NOT EXISTS enrichment_source_performance (
     -- Time window
     date DATE NOT NULL,
 
-    -- Indexes
-    UNIQUE (source_name, layer_number, date),
-    INDEX idx_source_name (source_name),
-    INDEX idx_layer_number (layer_number),
-    INDEX idx_date (date DESC)
+    -- Constraints
+    UNIQUE (source_name, layer_number, date)
 );
 
 -- Add comment
 COMMENT ON TABLE enrichment_source_performance IS
 'Daily aggregated performance metrics for each enrichment source';
+
+-- Create indexes separately
+CREATE INDEX idx_source_perf_source_name ON enrichment_source_performance(source_name);
+CREATE INDEX idx_source_perf_layer_number ON enrichment_source_performance(layer_number);
+CREATE INDEX idx_source_perf_date ON enrichment_source_performance(date DESC);
 
 
 -- ============================================================================
