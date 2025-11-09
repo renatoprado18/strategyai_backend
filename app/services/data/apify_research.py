@@ -14,7 +14,7 @@ from tenacity import (
 )
 import logging
 import asyncio
-from apify_client import ApifyClientError
+# Note: ApifyClientError removed in apify-client 2.2.1, using generic Exception
 from app.core.exceptions import ApifyError
 from app.services.data.apify_client import (
     get_apify_client,
@@ -105,7 +105,7 @@ async def research_competitors(company: str, industry: str) -> Dict[str, Any]:
 
         return competitors_data
 
-    except ApifyClientError as e:
+    except Exception as e:
         logger.error(f"[APIFY ERROR] Apify API error in competitor research: {str(e)}", exc_info=True)
         return {
             "error": f"Apify API error: {str(e)}",
@@ -197,7 +197,7 @@ async def research_industry_trends(industry: str) -> Dict[str, Any]:
 
         return trends_data
 
-    except ApifyClientError as e:
+    except Exception as e:
         logger.error(f"[APIFY ERROR] Apify API error in industry trends: {str(e)}", exc_info=True)
         return {
             "error": f"Apify API error: {str(e)}",
@@ -283,7 +283,7 @@ async def enrich_company_data(company: str, website: Optional[str] = None) -> Di
 
         return enrichment_data
 
-    except ApifyClientError as e:
+    except Exception as e:
         logger.error(f"[APIFY ERROR] Apify API error in company enrichment: {str(e)}", exc_info=True)
         return {
             "error": f"Apify API error: {str(e)}",
@@ -373,7 +373,7 @@ async def search_company_news(company: str, industry: str) -> Dict[str, Any]:
 
         return news_data
 
-    except ApifyClientError as e:
+    except Exception as e:
         logger.error(f"[APIFY ERROR] Apify API error in company news search: {str(e)}", exc_info=True)
         return {
             "error": f"Apify API error: {str(e)}",
@@ -466,7 +466,7 @@ async def search_social_media_presence(company: str, website: Optional[str] = No
 
         return social_data
 
-    except ApifyClientError as e:
+    except Exception as e:
         logger.error(f"[APIFY ERROR] Apify API error in social media search: {str(e)}", exc_info=True)
         return {
             "error": f"Apify API error: {str(e)}",

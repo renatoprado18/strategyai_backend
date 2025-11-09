@@ -13,7 +13,7 @@ from tenacity import (
     before_sleep_log
 )
 import logging
-from apify_client import ApifyClientError
+# Note: ApifyClientError removed in apify-client 2.2.1, using generic Exception
 from app.core.exceptions import ApifyError
 from app.services.data.apify_client import (
     get_apify_client,
@@ -98,7 +98,7 @@ async def scrape_company_website(website_url: str) -> Dict[str, Any]:
 
         return website_data
 
-    except ApifyClientError as e:
+    except Exception as e:
         logger.error(f"[APIFY ERROR] Apify API error scraping website {website_url}: {str(e)}", exc_info=True)
         return {
             "error": f"Apify API error: {str(e)}",
@@ -178,7 +178,7 @@ async def scrape_linkedin_company(linkedin_url: Optional[str], company_name: str
 
         return linkedin_data
 
-    except ApifyClientError as e:
+    except Exception as e:
         logger.error(f"[APIFY ERROR] Apify API error scraping LinkedIn company: {str(e)}", exc_info=True)
         return {
             "error": f"Apify API error: {str(e)}",
@@ -264,7 +264,7 @@ async def scrape_linkedin_founder(linkedin_url: Optional[str], founder_name: Opt
 
         return founder_data
 
-    except ApifyClientError as e:
+    except Exception as e:
         logger.error(f"[APIFY ERROR] Apify API error scraping LinkedIn founder: {str(e)}", exc_info=True)
         return {
             "error": f"Apify API error: {str(e)}",
