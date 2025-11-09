@@ -265,6 +265,15 @@ class ApifyError(ExternalServiceError):
         super().__init__("Apify", message)
 
 
+class CircuitBreakerOpenError(ExternalServiceError):
+    """Circuit breaker is open - service calls are being rejected"""
+
+    def __init__(self, message: str, service_name: str):
+        super().__init__(service_name, f"Circuit breaker OPEN: {message}")
+        self.details["circuit_breaker"] = "open"
+        self.details["retry_recommended"] = True
+
+
 class SupabaseError(ExternalServiceError):
     """Supabase API error"""
 
@@ -277,6 +286,13 @@ class RedisError(ExternalServiceError):
 
     def __init__(self, message: str):
         super().__init__("Redis", message)
+
+
+class CacheError(ExternalServiceError):
+    """Cache infrastructure error"""
+
+    def __init__(self, message: str):
+        super().__init__("Cache", message)
 
 
 # ============================================================================

@@ -15,11 +15,24 @@ from app.core.config import get_settings
 from app.core.database import init_db, count_submissions
 from app.core.middleware import register_exception_handlers
 from app.core.security.rate_limiter import get_redis_client
+from app.middleware.logging_middleware import CorrelationIdMiddleware, configure_structured_logging
+from app.middleware.security_middleware import (
+    SecurityHeadersMiddleware,
+    RequestSizeLimitMiddleware,
+    RateLimitByEndpointMiddleware,
+    get_security_config
+)
+from app.core.circuit_breaker import get_circuit_breaker_health
 
 # Import all routers
 from app.routes import analysis, reports, chat, intelligence, admin
 from app.routes.auth import router as auth_router
 from app.routes.user_actions import router as user_actions_router
+from app.routes import enrichment, enrichment_admin
+from app.routes.enrichment_progressive import router as progressive_enrichment_router
+
+# Import custom OpenAPI schema generator
+from app.core.openapi import custom_openapi
 
 # Setup
 settings = get_settings()
@@ -74,8 +87,13 @@ async def lifespan(app: FastAPI):
     # ========================================================================
     # STARTUP
     # ========================================================================
+    # Configure structured logging with JSON format in production
+    json_logging = settings.environment in ["production", "staging"]
+    configure_structured_logging(app_name="strategy-ai", json_format=json_logging)
+
     logger.info("[STARTUP] Starting Strategy AI Backend...")
     logger.info(f"[STARTUP] Environment: {settings.environment}")
+    logger.info(f"[STARTUP] Logging format: {'JSON' if json_logging else 'text'}")
     logger.info(f"[STARTUP] Allowed origins: {settings.allowed_origins}")
 
     # Initialize database connection
@@ -130,15 +148,124 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Strategy AI Lead Generator API",
-    description="AI-powered business analysis lead generation system with Supabase, Auth, and Apify",
+    description="""
+## AI-Powered Business Analysis & Lead Generation Platform
+
+Strategy AI is a comprehensive lead generation and business analysis system that combines AI-powered insights with web scraping and market research capabilities.
+
+### Key Features
+
+- **Multi-Stage AI Analysis Pipeline**: 6-stage analysis process with Gemini 2.0 Flash and GPT-4o
+- **Real-time Progress Streaming**: Server-Sent Events (SSE) for live analysis updates
+- **Intelligent Caching**: Multi-layer caching with Upstash Redis for cost optimization
+- **Web Data Enrichment**: Apify integration for website, LinkedIn, and competitor data
+- **Advanced Authentication**: JWT-based auth with admin role management via Supabase
+- **AI Chat Interface**: Interactive chat with Claude for report refinement
+- **PDF Report Generation**: Professional PDF reports with customizable templates
+- **Markdown Export/Import**: Full report editing workflow with markdown support
+- **Confidence Scoring**: AI-powered quality assessment for all analyses
+
+### Technology Stack
+
+- **Framework**: FastAPI 0.100+
+- **Database**: Supabase PostgreSQL
+- **Caching**: Upstash Redis
+- **AI Models**: Gemini 2.0 Flash, GPT-4o, Claude 3.5 (via OpenRouter)
+- **Web Scraping**: Apify actors
+- **Authentication**: JWT + Supabase Auth
+- **Monitoring**: Sentry error tracking
+    """,
     version="2.0.0",
     lifespan=lifespan,
+    contact={
+        "name": "Strategy AI Support",
+        "url": "https://github.com/yourusername/strategy-ai-backend",
+        "email": "support@strategyai.example.com"
+    },
+    license_info={
+        "name": "MIT License",
+        "url": "https://opensource.org/licenses/MIT"
+    },
+    terms_of_service="https://strategyai.example.com/terms",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    servers=[
+        {
+            "url": "https://api.strategyai.example.com",
+            "description": "Production server"
+        },
+        {
+            "url": "https://staging-api.strategyai.example.com",
+            "description": "Staging server"
+        },
+        {
+            "url": "http://localhost:8000",
+            "description": "Development server"
+        }
+    ],
+    openapi_tags=[
+        {
+            "name": "auth",
+            "description": "Authentication and authorization endpoints for admin access",
+        },
+        {
+            "name": "analysis",
+            "description": "Lead submission and analysis processing endpoints",
+        },
+        {
+            "name": "reports",
+            "description": "Report management, export, and editing endpoints",
+        },
+        {
+            "name": "chat",
+            "description": "AI-powered chat interface for report interaction",
+        },
+        {
+            "name": "intelligence",
+            "description": "Dashboard intelligence and analytics endpoints",
+        },
+        {
+            "name": "admin",
+            "description": "System administration and cache management endpoints",
+        },
+        {
+            "name": "user_actions",
+            "description": "User management and admin dashboard actions",
+        },
+        {
+            "name": "enrichment",
+            "description": "IMENSIAH data enrichment - public landing page submissions",
+        },
+        {
+            "name": "enrichment-admin",
+            "description": "IMENSIAH enrichment admin - dashboard analytics and management",
+        }
+    ]
 )
 
 
 # ============================================================================
 # MIDDLEWARE
 # ============================================================================
+# Middleware is applied in reverse order (last added = first executed)
+# Order: Security Headers → Rate Limit → Request Size → Correlation ID → CORS → GZip
+
+# Security Headers Middleware (last - applied to all responses)
+app.add_middleware(
+    SecurityHeadersMiddleware,
+    enable_hsts=settings.environment == "production",  # HSTS only in production
+    enable_csp=False  # CSP disabled by default (can break frontend)
+)
+
+# Rate Limit Headers Middleware
+app.add_middleware(RateLimitByEndpointMiddleware)
+
+# Request Size Limit Middleware (prevent DoS)
+app.add_middleware(RequestSizeLimitMiddleware)
+
+# Correlation ID Middleware (adds tracing to all requests)
+app.add_middleware(CorrelationIdMiddleware, header_name="X-Correlation-ID")
 
 # CORS Middleware
 app.add_middleware(
@@ -149,7 +276,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# GZip Compression
+# GZip Compression (first - compresses responses)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
@@ -165,9 +292,55 @@ register_exception_handlers(app)
 # ROOT ENDPOINTS
 # ============================================================================
 
-@app.get("/")
+@app.get("/",
+    summary="API Root",
+    description="""
+    API root endpoint providing service information and status.
+
+    Returns basic information about the API including:
+    - Service name and version
+    - Current environment (production/staging/development)
+    - Available features and capabilities
+    - API status
+
+    This endpoint is useful for:
+    - Verifying API is accessible
+    - Checking current version
+    - Understanding available features
+    - Service discovery
+
+    **Example:**
+    ```bash
+    curl https://api.strategyai.com/
+    ```
+    """,
+    responses={
+        200: {
+            "description": "API information",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "service": "Strategy AI Lead Generator API",
+                        "status": "running",
+                        "version": "2.0.0",
+                        "environment": "production",
+                        "features": [
+                            "Supabase PostgreSQL",
+                            "JWT Authentication",
+                            "Apify Web Scraping",
+                            "Upstash Redis Caching",
+                            "SSE Streaming",
+                            "Multi-stage AI Analysis",
+                            "PDF Generation"
+                        ]
+                    }
+                }
+            }
+        }
+    },
+    tags=["health"])
 async def root():
-    """API root endpoint"""
+    """API root endpoint - returns service information and status"""
     return {
         "service": "Strategy AI Lead Generator API",
         "status": "running",
@@ -185,21 +358,175 @@ async def root():
     }
 
 
-@app.get("/health")
+@app.get("/health",
+    summary="Health Check",
+    description="""
+    Comprehensive health check endpoint for monitoring and load balancers.
+
+    **Checked Services:**
+    1. **Database (Supabase PostgreSQL)**
+       - Connection status
+       - Query execution test
+       - Submission count verification
+
+    2. **Cache (Upstash Redis)**
+       - Connection status
+       - Ping/pong test
+       - Response time
+
+    3. **AI Service (OpenRouter)**
+       - Configuration validation
+       - API key presence check
+
+    4. **Circuit Breakers**
+       - All breaker states
+       - Open circuit detection
+       - Failure rate monitoring
+
+    5. **Security Middleware**
+       - Security features status
+       - Rate limiting availability
+       - Request size limits
+
+    **Response Status Codes:**
+    - `200 OK (healthy)`: All systems operational
+    - `200 OK (degraded)`: Non-critical service issues
+    - `503 Service Unavailable`: Critical service failure
+
+    **Health States:**
+    - **healthy**: All services operational
+    - **degraded**: Some services have issues but API functional
+    - **unhealthy**: Critical services down, API may fail
+
+    **Use Cases:**
+    - Kubernetes liveness/readiness probes
+    - Load balancer health checks
+    - Monitoring alerting (Prometheus, Datadog, etc.)
+    - Uptime monitoring (UptimeRobot, Pingdom)
+    - CI/CD deployment validation
+
+    **Example Response (Healthy):**
+    ```json
+    {
+      "status": "healthy",
+      "timestamp": "2025-01-26T10:00:00Z",
+      "version": "2.0.0",
+      "environment": "production",
+      "checks": {
+        "database": {
+          "status": "healthy",
+          "submissions_count": 1247
+        },
+        "redis": {
+          "status": "healthy"
+        },
+        "openrouter": {
+          "status": "configured",
+          "api_key_present": true
+        },
+        "circuit_breakers": {
+          "status": "healthy",
+          "summary": "All breakers closed",
+          "open_circuits": []
+        },
+        "security": {
+          "status": "healthy",
+          "features": ["rate_limiting", "cors", "security_headers"]
+        }
+      }
+    }
+    ```
+
+    **Monitoring Integration:**
+
+    *Kubernetes:*
+    ```yaml
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8000
+      initialDelaySeconds: 30
+      periodSeconds: 10
+
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 8000
+      initialDelaySeconds: 5
+      periodSeconds: 5
+    ```
+
+    *Prometheus:*
+    ```yaml
+    - job_name: 'strategy-ai'
+      metrics_path: '/health'
+      static_configs:
+        - targets: ['api.strategyai.com']
+    ```
+
+    **Notes:**
+    - No authentication required (public endpoint)
+    - Lightweight checks (< 100ms response time)
+    - Safe to call frequently (every 10 seconds)
+    - Does not count towards rate limits
+    """,
+    responses={
+        200: {
+            "description": "Service is healthy or degraded",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "healthy": {
+                            "summary": "All systems operational",
+                            "value": {
+                                "status": "healthy",
+                                "timestamp": "2025-01-26T10:00:00Z",
+                                "version": "2.0.0",
+                                "checks": {
+                                    "database": {"status": "healthy"},
+                                    "redis": {"status": "healthy"}
+                                }
+                            }
+                        },
+                        "degraded": {
+                            "summary": "Some services degraded",
+                            "value": {
+                                "status": "degraded",
+                                "timestamp": "2025-01-26T10:00:00Z",
+                                "checks": {
+                                    "database": {"status": "healthy"},
+                                    "openrouter": {
+                                        "status": "degraded",
+                                        "api_key_present": False
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        503: {
+            "description": "Service unavailable - critical services down",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "unhealthy",
+                        "timestamp": "2025-01-26T10:00:00Z",
+                        "checks": {
+                            "database": {
+                                "status": "unhealthy",
+                                "error": "Connection timeout"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    tags=["health"])
 async def health_check():
-    """
-    Health check endpoint for monitoring and load balancers
-
-    Checks:
-    - Database connectivity (Supabase)
-    - Redis connectivity (Upstash)
-    - OpenRouter API configuration
-
-    Returns:
-        200 OK: All services healthy
-        200 OK (degraded): Some services degraded
-        503 Service Unavailable: Critical services down
-    """
+    """Health check endpoint - comprehensive system health monitoring for load balancers"""
     health_status = {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
@@ -255,6 +582,38 @@ async def health_check():
             "error": str(e)
         }
 
+    # Check 4: Circuit Breakers
+    try:
+        circuit_health = get_circuit_breaker_health()
+        health_status["checks"]["circuit_breakers"] = {
+            "status": "healthy" if circuit_health["overall_healthy"] else "degraded",
+            "summary": circuit_health["summary"],
+            "open_circuits": [
+                b["name"] for b in circuit_health["breakers"]
+                if b["state"] == "open"
+            ]
+        }
+        if not circuit_health["overall_healthy"]:
+            health_status["status"] = "degraded"
+    except Exception as e:
+        health_status["checks"]["circuit_breakers"] = {
+            "status": "error",
+            "error": str(e)
+        }
+
+    # Check 5: Security Configuration
+    try:
+        security_config = get_security_config()
+        health_status["checks"]["security"] = {
+            "status": "healthy",
+            "features": security_config["features"]
+        }
+    except Exception as e:
+        health_status["checks"]["security"] = {
+            "status": "error",
+            "error": str(e)
+        }
+
     # Determine HTTP status code
     if health_status["status"] == "healthy":
         return health_status
@@ -288,6 +647,19 @@ app.include_router(admin.router, tags=["admin"])
 
 # User action routes (admin dashboard actions)
 app.include_router(user_actions_router, tags=["user_actions"])
+
+# Enrichment routes (IMENSIAH public + admin)
+app.include_router(enrichment.router, tags=["enrichment"])
+app.include_router(enrichment_admin.router, tags=["enrichment-admin"])
+app.include_router(progressive_enrichment_router, tags=["progressive-enrichment"])
+
+
+# ============================================================================
+# CUSTOM OPENAPI SCHEMA
+# ============================================================================
+
+# Apply custom OpenAPI schema with enhanced documentation
+app.openapi = lambda: custom_openapi(app)
 
 
 # ============================================================================

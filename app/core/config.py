@@ -52,13 +52,20 @@ class Settings(BaseSettings):
     # ============================================================================
     # AI SERVICES
     # ============================================================================
-    openrouter_api_key: str = Field(..., description="OpenRouter API key for LLM access")
+    openrouter_api_key: str = Field(default="", description="OpenRouter API key for GPT-4o-mini (progressive enrichment)")
     perplexity_api_key: str = Field(default="", description="Perplexity API key for market research")
 
     # ============================================================================
     # DATA COLLECTION
     # ============================================================================
     apify_api_token: str = Field(default="", description="Apify API token for web scraping")
+
+    # ============================================================================
+    # DATA ENRICHMENT (IMENSIAH)
+    # ============================================================================
+    clearbit_api_key: str = Field(default="", description="Clearbit API key for company enrichment ($0.10/call)")
+    google_places_api_key: str = Field(default="", description="Google Places API key for location data ($0.02/call)")
+    proxycurl_api_key: str = Field(default="", description="Proxycurl API key for LinkedIn data ($0.03/call)")
 
     # ============================================================================
     # CACHING & RATE LIMITING (UPSTASH REDIS)
