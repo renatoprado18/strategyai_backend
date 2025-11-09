@@ -52,8 +52,8 @@ class Settings(BaseSettings):
     # ============================================================================
     # AI SERVICES
     # ============================================================================
-    openrouter_api_key: str = Field(default="", description="OpenRouter API key for GPT-4o-mini (progressive enrichment)")
-    perplexity_api_key: str = Field(default="", description="Perplexity API key for market research")
+    openrouter_api_key: str = Field(default="", description="OpenRouter API key for GPT-4o-mini + Perplexity (progressive enrichment & research)")
+    # Note: Perplexity is called via OpenRouter, no separate API key needed
 
     # ============================================================================
     # DATA COLLECTION
