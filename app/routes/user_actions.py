@@ -8,9 +8,12 @@ archiving, and restoring submissions.
 from fastapi import APIRouter, HTTPException, status
 from typing import Dict, Any, Optional
 from datetime import datetime
+import logging
 from pydantic import BaseModel, EmailStr
 from app.routes.auth import RequireAuth
 from app.core.database import update_submission_processing_state, get_submission
+
+logger = logging.getLogger(__name__)
 
 # Create router with admin prefix
 router = APIRouter(prefix="/api/admin", tags=["user_actions"])
@@ -84,14 +87,14 @@ async def update_submission_with_timestamps(
         result = response.data[0] if response.data else None
 
         # Log the action
-        print(f"[USER_ACTION] Submission {submission_id}: "
+        logger.info(f"[USER_ACTION] Submission {submission_id}: "
               f"user_status '{old_user_status}' → '{user_status}', "
               f"old_status='{old_status}'")
 
         return result
 
     except Exception as e:
-        print(f"[ERROR] Failed to update submission {submission_id}: {str(e)}")
+        logger.error(f"[ERROR] Failed to update submission {submission_id}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update submission: {str(e)}"
@@ -124,7 +127,7 @@ async def mark_submission_reviewed(
         Valid JWT token in Authorization header
     """
     try:
-        print(f"[AUTH] User {current_user['email']} marking submission {submission_id} as reviewed")
+        logger.info(f"[AUTH] User {current_user['email']} marking submission {submission_id} as reviewed")
 
         # Update submission
         updated_submission = await update_submission_with_timestamps(
@@ -146,7 +149,7 @@ async def mark_submission_reviewed(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Mark reviewed error: {e}")
+        logger.error(f"[ERROR] Mark reviewed error: {e}", exc_info=True)
         return {
             "success": False,
             "error": str(e)
@@ -177,7 +180,7 @@ async def send_submission_to_client(
         Valid JWT token in Authorization header
     """
     try:
-        print(f"[AUTH] User {current_user['email']} sending submission {submission_id} to client {request.client_email}")
+        logger.info(f"[AUTH] User {current_user['email']} sending submission {submission_id} to client {request.client_email}")
 
         # Prepare additional fields
         additional_fields = {
@@ -212,7 +215,7 @@ async def send_submission_to_client(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Send to client error: {e}")
+        logger.error(f"[ERROR] Send to client error: {e}", exc_info=True)
         return {
             "success": False,
             "error": str(e)
@@ -241,7 +244,7 @@ async def archive_submission(
         Valid JWT token in Authorization header
     """
     try:
-        print(f"[AUTH] User {current_user['email']} archiving submission {submission_id}")
+        logger.info(f"[AUTH] User {current_user['email']} archiving submission {submission_id}")
 
         # Update submission
         updated_submission = await update_submission_with_timestamps(
@@ -267,7 +270,7 @@ async def archive_submission(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Archive submission error: {e}")
+        logger.error(f"[ERROR] Archive submission error: {e}", exc_info=True)
         return {
             "success": False,
             "error": str(e)
@@ -297,7 +300,7 @@ async def restore_submission(
         Valid JWT token in Authorization header
     """
     try:
-        print(f"[AUTH] User {current_user['email']} restoring submission {submission_id}")
+        logger.info(f"[AUTH] User {current_user['email']} restoring submission {submission_id}")
 
         # Update submission - restore to 'ready' status
         updated_submission = await update_submission_with_timestamps(
@@ -323,7 +326,7 @@ async def restore_submission(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Restore submission error: {e}")
+        logger.error(f"[ERROR] Restore submission error: {e}", exc_info=True)
         return {
             "success": False,
             "error": str(e)

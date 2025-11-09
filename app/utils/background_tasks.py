@@ -4,6 +4,7 @@ Handles asynchronous analysis processing with real-time progress updates
 """
 import asyncio
 import json
+import logging
 import time
 from typing import Dict, List
 from datetime import datetime
@@ -20,6 +21,8 @@ from app.services.data.apify import gather_all_apify_data
 from app.services.data.perplexity import comprehensive_market_research
 import app.services.data.perplexity as perplexity_service
 from app.core.cache import get_cached_analysis, cache_analysis_result
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -51,7 +54,7 @@ def emit_progress(submission_id: int, stage: str, message: str, progress: int):
     }
 
     _progress_tracker[submission_id].append(update)
-    print(f"[PROGRESS] Submission {submission_id}: {progress}% - {message}")
+    logger.info(f"[PROGRESS] Submission {submission_id}: {progress}% - {message}")
 
 
 def get_progress_updates(submission_id: int) -> List[Dict]:
@@ -82,10 +85,10 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
         # Get submission details
         submission = await get_submission(submission_id)
         if not submission:
-            print(f"[ERROR] Submission {submission_id} not found")
+            logger.error(f"[ERROR] Submission {submission_id} not found")
             return
 
-        print(f"[PROCESSING] Processing analysis for submission {submission_id}...")
+        logger.info(f"[PROCESSING] Processing analysis for submission {submission_id}...")
 
         # Progress: Start - Update to 'queued' state
         await update_submission_processing_state(
@@ -96,7 +99,7 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
 
         # Step 1: Apify data gathering DISABLED (too slow, Perplexity covers 90% of use cases)
         # TODO: Re-enable when we have parallel execution or faster scraping
-        print(f"[APIFY] DISABLED - Skipping Apify data gathering (using Perplexity only)")
+        logger.info(f"[APIFY] DISABLED - Skipping Apify data gathering (using Perplexity only)")
         await update_submission_processing_state(
             submission_id=submission_id,
             processing_state='data_gathering'
@@ -123,7 +126,7 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
         emit_progress(submission_id, "data_gathering", "Apify desabilitado - usando Perplexity para pesquisa de mercado", 30)
 
         # Step 1.5: Perplexity Deep Research
-        print(f"[PERPLEXITY] Starting comprehensive market research for {submission['company']}...")
+        logger.info(f"[PERPLEXITY] Starting comprehensive market research for {submission['company']}...")
         # deep_research also maps to 'data_gathering' state
         await update_submission_processing_state(
             submission_id=submission_id,
@@ -145,7 +148,7 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
             perplexity_success = perplexity_data.get("research_completed", False)
 
             if perplexity_success:
-                print(f"[PERPLEXITY] ✅ Comprehensive research completed!")
+                logger.info(f"[PERPLEXITY] ✅ Comprehensive research completed!")
                 perplexity_sources = int(perplexity_data.get('success_rate', '0/5').split('/')[0])
                 data_quality["perplexity_sources"] = perplexity_sources
                 data_quality["sources_succeeded"] = perplexity_sources  # Only Perplexity now
@@ -170,7 +173,7 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
                 data_quality["data_completeness"] = f"{int(completion_rate * 100)}% (Perplexity only)"
 
         except Exception as e:
-            print(f"[WARNING] Perplexity research failed: {str(e)}. Continuing with Apify data only...")
+            logger.warning(f"[WARNING] Perplexity research failed: {str(e)}. Continuing with Apify data only...")
             perplexity_data = None
 
         # Progress: Deep research complete
@@ -179,7 +182,7 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
         # Step 2: Check cache
         cached_analysis_result = None
         if not force_regenerate:
-            print(f"[CACHE] 🔍 Checking analysis cache for {submission['company']}...")
+            logger.info(f"[CACHE] 🔍 Checking analysis cache for {submission['company']}...")
             cached_analysis_result = await get_cached_analysis(
                 company=submission["company"],
                 industry=submission["industry"],
@@ -187,7 +190,7 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
                 website=submission.get("website")
             )
         else:
-            print(f"[REGENERATE] 🔄 Force regenerate - bypassing analysis cache")
+            logger.info(f"[REGENERATE] 🔄 Force regenerate - bypassing analysis cache")
 
         if cached_analysis_result and cached_analysis_result.get("cache_hit") and not force_regenerate:
             # CACHE HIT
@@ -196,7 +199,7 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
             cost_saved = cached_analysis_result.get("cost_saved", 20)
             cache_age_hours = cached_analysis_result.get("cache_age_hours", 0)
 
-            print(f"[CACHE] 🎯💰 CACHE HIT! Saved ${cost_saved:.2f} (age: {cache_age_hours:.1f}h)")
+            logger.info(f"[CACHE] 🎯💰 CACHE HIT! Saved ${cost_saved:.2f} (age: {cache_age_hours:.1f}h)")
             await update_submission_processing_state(
                 submission_id=submission_id,
                 processing_state='ai_analyzing'
@@ -206,10 +209,10 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
         else:
             # CACHE MISS - Generate new analysis
             if force_regenerate:
-                print(f"[REGENERATE] Generating fresh AI analysis")
+                logger.info(f"[REGENERATE] Generating fresh AI analysis")
             else:
-                print(f"[CACHE] ❌ Cache miss - generating new analysis")
-            print(f"[AI] 🚀 Generating strategic analysis for submission {submission_id}...")
+                logger.info(f"[CACHE] ❌ Cache miss - generating new analysis")
+            logger.info(f"[AI] 🚀 Generating strategic analysis for submission {submission_id}...")
             await update_submission_processing_state(
                 submission_id=submission_id,
                 processing_state='ai_analyzing'
@@ -249,7 +252,7 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
                 cost=estimated_cost,
                 processing_time=processing_time
             )
-            print(f"[CACHE] ✅ Analysis cached - will save ${estimated_cost:.2f} on next request")
+            logger.info(f"[CACHE] ✅ Analysis cached - will save ${estimated_cost:.2f} on next request")
 
         # Add data disclaimer if needed
         if data_quality["quality_tier"] in ["partial", "minimal"]:
@@ -298,11 +301,11 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
             error_message=None,
         )
 
-        print(f"[OK] Analysis completed for submission {submission_id}")
+        logger.info(f"[OK] Analysis completed for submission {submission_id}")
 
         # Calculate confidence score
         try:
-            print(f"[CONFIDENCE] Calculating confidence score for submission {submission_id}...")
+            logger.info(f"[CONFIDENCE] Calculating confidence score for submission {submission_id}...")
             submission_data = await get_submission(submission_id)
             confidence_score, confidence_breakdown = calculate_confidence_score(
                 submission_data=submission_data,
@@ -330,16 +333,16 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
                 processing_metadata=json.dumps(processing_meta_with_confidence, ensure_ascii=False),
             )
 
-            print(f"[CONFIDENCE] ✅ Confidence score: {confidence_score}/100")
+            logger.info(f"[CONFIDENCE] ✅ Confidence score: {confidence_score}/100")
         except Exception as conf_error:
-            print(f"[WARNING] Confidence calculation failed: {conf_error}")
+            logger.warning(f"[WARNING] Confidence calculation failed: {conf_error}")
 
         # Progress: Complete
         emit_progress(submission_id, "completed", f"✅ Relatório concluído! Qualidade: {data_quality['quality_tier'].upper()}", 100)
 
     except Exception as e:
         error_message = str(e)
-        print(f"[ERROR] Analysis failed for submission {submission_id}: {error_message}")
+        logger.error(f"[ERROR] Analysis failed for submission {submission_id}: {error_message}", exc_info=True)
 
         # Progress: Error
         emit_progress(submission_id, "failed", f"❌ Erro: {error_message[:100]}", 0)
@@ -370,7 +373,7 @@ def generate_pdf_background(submission_id: int, submission_data: dict, report_js
     import io
 
     try:
-        print(f"[PDF] Generating PDF for submission {submission_id}...")
+        logger.info(f"[PDF] Generating PDF for submission {submission_id}...")
 
         # Generate PDF
         pdf_stream = io.BytesIO()
@@ -380,11 +383,11 @@ def generate_pdf_background(submission_id: int, submission_data: dict, report_js
             output_stream=pdf_stream
         )
 
-        print(f"[PDF] PDF generated successfully for submission {submission_id}")
+        logger.info(f"[PDF] PDF generated successfully for submission {submission_id}")
         return pdf_stream
 
     except Exception as e:
-        print(f"[ERROR] PDF generation failed for submission {submission_id}: {e}")
+        logger.error(f"[ERROR] PDF generation failed for submission {submission_id}: {e}", exc_info=True)
         raise
 
 

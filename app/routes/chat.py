@@ -21,35 +21,132 @@ from app.routes.auth import RequireAuth
 router = APIRouter(prefix="/api/admin")
 
 
-@router.post("/submissions/{submission_id}/chat")
+@router.post("/submissions/{submission_id}/chat",
+    summary="Chat with AI about Report",
+    description="""
+    Interactive AI chat interface for report analysis and refinement (Admin only).
+
+    **Features:**
+    - Context-aware AI chat with full report knowledge
+    - Persistent chat history stored per submission
+    - Model selection (fast or quality)
+    - Token usage tracking
+    - Instant responses
+
+    **Available Models:**
+    - **haiku** (default): Claude 3.5 Haiku - Fast responses (< 2s), lower cost
+    - **sonnet**: Claude 3.5 Sonnet - High quality, deeper analysis (3-5s)
+
+    **Use Cases:**
+    - Ask clarifying questions about analysis
+    - Request additional insights
+    - Explore specific report sections
+    - Get recommendations refinement
+    - Understand data quality concerns
+
+    **Context Provided to AI:**
+    - Complete analysis report
+    - Data quality metrics
+    - Submission details (company, industry, challenge)
+    - Previous chat history
+    - Source data references
+
+    **Request Body:**
+    ```json
+    {
+      "message": "What are the main competitive threats identified?",
+      "model": "haiku"  // Optional: "haiku" or "sonnet"
+    }
+    ```
+
+    **Response Format:**
+    ```json
+    {
+      "success": true,
+      "message": "Based on the analysis, I identified 3 main competitive threats...",
+      "model_used": "claude-3-5-haiku-20241022",
+      "tokens_used": 542,
+      "timestamp": "2025-01-26T10:35:00Z",
+      "chat_history": [...]
+    }
+    ```
+
+    **Chat History:**
+    - Automatically persisted in database
+    - Included in all subsequent requests for context
+    - Viewable via `/chat/history` endpoint
+    - Cleared when submission is reprocessed
+
+    **Cost Estimation:**
+    - Haiku: ~$0.001 per message
+    - Sonnet: ~$0.005 per message
+    - Token usage varies by message length
+
+    **Example Questions:**
+    - "Summarize the top 3 opportunities"
+    - "What are the risk mitigation strategies?"
+    - "How reliable is the competitive intelligence?"
+    - "Explain the PESTEL analysis in simple terms"
+    - "What OKRs should we prioritize first?"
+
+    **Authentication:**
+    - Requires valid JWT token in Authorization header
+    - Admin privileges required
+
+    **Example:**
+    ```bash
+    curl -X POST https://api.example.com/api/admin/submissions/42/chat \\
+      -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \\
+      -H "Content-Type: application/json" \\
+      -d '{
+        "message": "What are the key findings?",
+        "model": "haiku"
+      }'
+    ```
+    """,
+    responses={
+        200: {
+            "description": "Chat message processed successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "message": "Based on the analysis, the key findings include...",
+                        "model_used": "claude-3-5-haiku-20241022",
+                        "tokens_used": 542,
+                        "timestamp": "2025-01-26T10:35:00Z",
+                        "chat_history": [
+                            {"role": "user", "content": "What are the key findings?"},
+                            {"role": "assistant", "content": "Based on the analysis..."}
+                        ]
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "Invalid request",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "empty_message": {
+                            "summary": "Empty message",
+                            "value": {"detail": "Message cannot be empty"}
+                        },
+                        "incomplete_analysis": {
+                            "summary": "Analysis not completed",
+                            "value": {"detail": "Can only chat about completed analyses"}
+                        }
+                    }
+                }
+            }
+        }
+    })
 async def chat_with_report(
     submission_id: int,
     request: Request,
     current_user: dict = RequireAuth,
 ):
-    """
-    Chat with AI about a specific report (Protected Admin endpoint)
-
-    Send a message and get AI response with full context about the analysis.
-
-    Request body:
-    {
-        "message": str,           # User's question
-        "model": str (optional)   # "haiku" (fast) or "sonnet" (quality), default haiku
-    }
-
-    Response:
-    {
-        "success": bool,
-        "message": str,           # AI response
-        "model_used": str,
-        "tokens_used": int,
-        "timestamp": str,
-        "chat_history": list      # Updated history
-    }
-
-    Requires valid JWT token in Authorization header
-    """
+    """Chat with AI about report - context-aware chat with persistent history"""
     try:
         print(f"[AUTH] User {current_user['email']} chatting about submission {submission_id}")
 

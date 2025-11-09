@@ -220,13 +220,86 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 # AUTHENTICATION ENDPOINTS
 # ============================================================================
 
-@router.post("/login", response_model=LoginResponse)
-async def login(credentials: LoginRequest):
-    """
-    Admin login endpoint
+@router.post("/login", response_model=LoginResponse,
+    summary="Admin Login",
+    description="""
+    Authenticate admin user and obtain JWT access token.
 
-    Authenticates user with Supabase Auth and returns JWT token
-    """
+    **Authentication Flow:**
+    1. Validates credentials against Supabase Auth
+    2. Verifies user has admin privileges in `admin_users` table
+    3. Generates JWT token with 7-day expiration
+    4. Returns token and user information
+
+    **Security:**
+    - Passwords are never stored or logged
+    - Tokens are signed with HS256 algorithm
+    - Admin privileges required (verified in database)
+
+    **Usage Example:**
+    ```python
+    import requests
+
+    response = requests.post(
+        "https://api.example.com/api/auth/login",
+        json={
+            "email": "admin@company.com",
+            "password": "SecurePassword123!"
+        }
+    )
+    token = response.json()["data"]["access_token"]
+    ```
+
+    **Token Usage:**
+    Include the token in subsequent requests:
+    ```
+    Authorization: Bearer <access_token>
+    ```
+    """,
+    responses={
+        200: {
+            "description": "Successful authentication",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "data": {
+                            "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                            "token_type": "bearer",
+                            "user": {
+                                "id": "550e8400-e29b-41d4-a716-446655440000",
+                                "email": "admin@company.com"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        401: {
+            "description": "Invalid credentials",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "error": "Invalid email or password"
+                    }
+                }
+            }
+        },
+        403: {
+            "description": "User exists but lacks admin privileges",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "error": "Access denied. Your account does not have admin privileges."
+                    }
+                }
+            }
+        }
+    })
+async def login(credentials: LoginRequest):
+    """Admin login endpoint - authenticates user with Supabase Auth and returns JWT token"""
     try:
         auth_result = await authenticate_user(
             email=credentials.email,
@@ -258,13 +331,57 @@ async def login(credentials: LoginRequest):
         )
 
 
-@router.post("/signup", response_model=SignupResponse)
-async def signup(credentials: SignupRequest):
-    """
-    User signup endpoint
+@router.post("/signup", response_model=SignupResponse,
+    summary="User Signup",
+    description="""
+    Create a new user account in Supabase Auth.
 
-    Creates a new user in Supabase Auth. User will not have admin access until manually granted in Supabase dashboard.
-    """
+    **Important Notes:**
+    - New users are created WITHOUT admin privileges
+    - Admin access must be manually granted in Supabase dashboard
+    - User can login but will receive 403 on admin endpoints
+    - Email verification may be required (configurable in Supabase)
+
+    **Admin Access Workflow:**
+    1. User signs up via this endpoint
+    2. Admin manually adds user to `admin_users` table in Supabase
+    3. User can now login and access admin endpoints
+
+    **Password Requirements:**
+    - Minimum 6 characters (Supabase default)
+    - Consider using strong passwords with mixed characters
+
+    **Email Requirements:**
+    - Must be valid email format
+    - Will be used for login and notifications
+    """,
+    responses={
+        200: {
+            "description": "Account created successfully",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "success": {
+                            "summary": "Successful signup",
+                            "value": {
+                                "success": True,
+                                "message": "Conta criada com sucesso! Você pode fazer login agora."
+                            }
+                        },
+                        "duplicate": {
+                            "summary": "Email already registered",
+                            "value": {
+                                "success": False,
+                                "error": "Este email já está registrado. Faça login ou use outro email."
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })
+async def signup(credentials: SignupRequest):
+    """User signup endpoint - creates new user in Supabase Auth (admin access must be granted manually)"""
     try:
         supabase = get_supabase_client(use_service_key=False)
 

@@ -30,6 +30,9 @@ from app.routes.auth import router as auth_router
 from app.routes.user_actions import router as user_actions_router
 from app.routes import enrichment, enrichment_admin
 from app.routes.enrichment_progressive import router as progressive_enrichment_router
+from app.routes.progressive_enrichment_admin import router as progressive_admin_router
+from app.routes.enrichment_analytics import router as enrichment_analytics_router
+from app.routes.enrichment_edit_tracking import router as enrichment_edit_tracking_router
 
 # Import custom OpenAPI schema generator
 from app.core.openapi import custom_openapi
@@ -240,6 +243,18 @@ Strategy AI is a comprehensive lead generation and business analysis system that
         {
             "name": "enrichment-admin",
             "description": "IMENSIAH enrichment admin - dashboard analytics and management",
+        },
+        {
+            "name": "progressive-enrichment-admin",
+            "description": "Progressive enrichment admin - 3-layer session management and transparency",
+        },
+        {
+            "name": "enrichment-analytics",
+            "description": "Progressive enrichment analytics - costs, performance, field success rates",
+        },
+        {
+            "name": "enrichment-learning",
+            "description": "Progressive enrichment learning - user edit tracking and pattern analysis",
         }
     ]
 )
@@ -652,6 +667,11 @@ app.include_router(user_actions_router, tags=["user_actions"])
 app.include_router(enrichment.router, tags=["enrichment"])
 app.include_router(enrichment_admin.router, tags=["enrichment-admin"])
 app.include_router(progressive_enrichment_router, tags=["progressive-enrichment"])
+
+# Progressive enrichment routes (Phase 2-6)
+app.include_router(progressive_admin_router, tags=["progressive-enrichment-admin"])
+app.include_router(enrichment_analytics_router, tags=["enrichment-analytics"])
+app.include_router(enrichment_edit_tracking_router, tags=["enrichment-learning"])
 
 
 # ============================================================================

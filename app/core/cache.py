@@ -18,6 +18,17 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 from app.core.supabase import supabase_service
+from app.core.constants import (
+    CACHE_TTL_ANALYSIS,
+    CACHE_TTL_STAGE,
+    CACHE_TTL_PDF,
+    CACHE_TTL_STATS,
+    CACHE_TTL_PERPLEXITY,
+    CACHE_MAX_PDFS_IN_MEMORY,
+    MAX_CHALLENGE_SNIPPET_LENGTH,
+    MAX_CHALLENGE_DB_LENGTH,
+    HASH_LENGTH_SHORT
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +44,12 @@ STAGE_CACHE_TABLE = "stage_cache"
 PDF_CACHE_TABLE = "pdf_cache"
 STATS_CACHE_TABLE = "stats_cache"
 
-# TTLs (in hours)
-TTL_ANALYSIS = 24 * 30  # 30 days for complete analysis
-TTL_STAGE = 24 * 7  # 7 days for pipeline stages
-TTL_PDF = 24 * 90  # 90 days for PDFs (cheap to store)
-TTL_STATS = 1/12  # 5 minutes for dashboard stats
-TTL_PERPLEXITY = 24 * 14  # 14 days for Perplexity queries
+# TTLs (in hours) - imported from constants
+TTL_ANALYSIS = CACHE_TTL_ANALYSIS  # 30 days for complete analysis
+TTL_STAGE = CACHE_TTL_STAGE  # 7 days for pipeline stages
+TTL_PDF = CACHE_TTL_PDF  # 90 days for PDFs (cheap to store)
+TTL_STATS = CACHE_TTL_STATS  # 5 minutes for dashboard stats
+TTL_PERPLEXITY = CACHE_TTL_PERPLEXITY  # 14 days for Perplexity queries
 
 
 # ============================================================================
@@ -60,13 +71,13 @@ def generate_analysis_cache_key(
     components = [
         company.lower().strip(),
         industry.lower().strip(),
-        (challenge or "").lower().strip()[:50],  # First 50 chars of challenge
+        (challenge or "").lower().strip()[:MAX_CHALLENGE_SNIPPET_LENGTH],  # First N chars of challenge
         (website or "").lower().strip()
     ]
 
     # Create deterministic hash
     key_string = "|".join(components)
-    key_hash = hashlib.sha256(key_string.encode()).hexdigest()[:16]
+    key_hash = hashlib.sha256(key_string.encode()).hexdigest()[:HASH_LENGTH_SHORT]
 
     return f"analysis:{company.lower().strip()}:{key_hash}"
 
@@ -83,7 +94,7 @@ def generate_stage_cache_key(
     Allows caching stage results independently
     """
     key_string = f"{stage_name}|{company.lower().strip()}|{industry.lower().strip()}|{input_hash}"
-    key_hash = hashlib.sha256(key_string.encode()).hexdigest()[:16]
+    key_hash = hashlib.sha256(key_string.encode()).hexdigest()[:HASH_LENGTH_SHORT]
 
     return f"stage:{stage_name}:{key_hash}"
 
@@ -93,9 +104,9 @@ def generate_content_hash(content: Any) -> str:
     if isinstance(content, dict):
         content = json.dumps(content, sort_keys=True, ensure_ascii=False)
     elif isinstance(content, bytes):
-        return hashlib.sha256(content).hexdigest()[:16]
+        return hashlib.sha256(content).hexdigest()[:HASH_LENGTH_SHORT]
 
-    return hashlib.sha256(str(content).encode()).hexdigest()[:16]
+    return hashlib.sha256(str(content).encode()).hexdigest()[:HASH_LENGTH_SHORT]
 
 
 def generate_pdf_cache_key(report_json: Dict[str, Any]) -> str:
@@ -131,7 +142,7 @@ async def cache_analysis_result(
             "cache_key": cache_key,
             "company": company.lower().strip(),
             "industry": industry.lower().strip(),
-            "challenge_snippet": (challenge or "")[:100],
+            "challenge_snippet": (challenge or "")[:MAX_CHALLENGE_DB_LENGTH],
             "content_hash": content_hash,
             "analysis_json": json.dumps(analysis_result, ensure_ascii=False),
             "cost_saved": cost,  # Track how much we save per hit
@@ -156,8 +167,12 @@ async def cache_analysis_result(
 
         return False
 
+    except json.JSONDecodeError as e:
+        logger.error(f"[CACHE] ❌ JSON serialization failed: {str(e)}", exc_info=True)
+        return False
     except Exception as e:
-        logger.error(f"[CACHE] ❌ Failed to cache analysis: {str(e)}")
+        # Catch-all for database errors or unexpected issues
+        logger.exception(f"[CACHE] ❌ Failed to cache analysis: {str(e)}")
         return False
 
 
@@ -234,8 +249,12 @@ async def get_cached_analysis(
         logger.info(f"[CACHE] ❌ Analysis cache miss: {cache_key}")
         return None
 
+    except json.JSONDecodeError as e:
+        logger.error(f"[CACHE] ❌ JSON deserialization failed for analysis cache: {str(e)}", exc_info=True)
+        return None
     except Exception as e:
-        logger.error(f"[CACHE] Error retrieving analysis cache: {str(e)}")
+        # Catch-all for database errors or unexpected issues
+        logger.exception(f"[CACHE] Error retrieving analysis cache: {str(e)}")
         return None
 
 
@@ -281,8 +300,12 @@ async def cache_stage_result(
 
         return False
 
+    except json.JSONDecodeError as e:
+        logger.error(f"[CACHE] ❌ JSON serialization failed for stage cache: {str(e)}", exc_info=True)
+        return False
     except Exception as e:
-        logger.error(f"[CACHE] Failed to cache stage: {str(e)}")
+        # Catch-all for database errors or unexpected issues
+        logger.exception(f"[CACHE] Failed to cache stage: {str(e)}")
         return False
 
 
@@ -339,8 +362,12 @@ async def get_cached_stage_result(
 
         return None
 
+    except json.JSONDecodeError as e:
+        logger.error(f"[CACHE] ❌ JSON deserialization failed for stage cache: {str(e)}", exc_info=True)
+        return None
     except Exception as e:
-        logger.error(f"[CACHE] Error retrieving stage cache: {str(e)}")
+        # Catch-all for database errors or unexpected issues
+        logger.exception(f"[CACHE] Error retrieving stage cache: {str(e)}")
         return None
 
 
@@ -375,7 +402,7 @@ async def cache_pdf(
 
         if result.data:
             # Store in memory (limited size - only recent PDFs)
-            if len(_pdf_cache) < 50:  # Keep max 50 PDFs in memory (~100-250MB)
+            if len(_pdf_cache) < CACHE_MAX_PDFS_IN_MEMORY:  # Keep max N PDFs in memory (~100-250MB)
                 _pdf_cache[cache_key] = pdf_bytes
 
             logger.info(f"[CACHE] ✅ Cached PDF: {cache_key} ({len(pdf_bytes)/1024:.1f}KB)")
@@ -384,7 +411,8 @@ async def cache_pdf(
         return False
 
     except Exception as e:
-        logger.error(f"[CACHE] Failed to cache PDF: {str(e)}")
+        # Catch-all for database errors or unexpected issues
+        logger.exception(f"[CACHE] Failed to cache PDF: {str(e)}")
         return False
 
 
@@ -404,7 +432,8 @@ async def get_cached_pdf(report_json: Dict[str, Any]) -> Optional[bytes]:
         return None
 
     except Exception as e:
-        logger.error(f"[CACHE] Error retrieving PDF cache: {str(e)}")
+        # Catch-all for database errors or unexpected issues
+        logger.exception(f"[CACHE] Error retrieving PDF cache: {str(e)}")
         return None
 
 
@@ -437,8 +466,12 @@ async def cache_dashboard_stats(stats: Dict[str, Any]) -> bool:
         logger.info(f"[CACHE] ✅ Cached dashboard stats (TTL: {TTL_STATS*60:.0f}min)")
         return True
 
+    except json.JSONDecodeError as e:
+        logger.error(f"[CACHE] ❌ JSON serialization failed for stats cache: {str(e)}", exc_info=True)
+        return False
     except Exception as e:
-        logger.error(f"[CACHE] Failed to cache stats: {str(e)}")
+        # Catch-all for database errors or unexpected issues
+        logger.exception(f"[CACHE] Failed to cache stats: {str(e)}")
         return False
 
 
@@ -478,8 +511,12 @@ async def get_cached_dashboard_stats() -> Optional[Dict[str, Any]]:
 
         return None
 
+    except json.JSONDecodeError as e:
+        logger.error(f"[CACHE] ❌ JSON deserialization failed for stats cache: {str(e)}", exc_info=True)
+        return None
     except Exception as e:
-        logger.error(f"[CACHE] Error retrieving stats cache: {str(e)}")
+        # Catch-all for database errors or unexpected issues
+        logger.exception(f"[CACHE] Error retrieving stats cache: {str(e)}")
         return None
 
 
@@ -541,7 +578,8 @@ async def get_cache_statistics() -> Dict[str, Any]:
         return stats
 
     except Exception as e:
-        logger.error(f"[CACHE] Error getting cache statistics: {str(e)}")
+        # Catch-all for database errors or unexpected issues
+        logger.exception(f"[CACHE] Error getting cache statistics: {str(e)}")
         return {}
 
 
@@ -585,5 +623,6 @@ async def clear_expired_cache() -> Dict[str, int]:
         return cleared
 
     except Exception as e:
-        logger.error(f"[CACHE] Error clearing expired cache: {str(e)}")
+        # Catch-all for database errors or unexpected issues
+        logger.exception(f"[CACHE] Error clearing expired cache: {str(e)}")
         return {}

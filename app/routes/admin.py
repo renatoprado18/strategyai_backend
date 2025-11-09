@@ -10,19 +10,112 @@ from app.core.cache import get_cache_statistics, clear_expired_cache
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
-@router.get("/cache/statistics")
+@router.get("/cache/statistics",
+    summary="Get Cache Statistics",
+    description="""
+    Retrieve comprehensive cache performance metrics and cost savings (Admin only).
+
+    **Metrics Provided:**
+
+    1. **Enhanced Cache Statistics:**
+       - Analysis cache (full reports - 30 day TTL)
+       - Stage cache (individual stages - 7 day TTL)
+       - PDF cache (generated PDFs - 90 day TTL)
+       - Dashboard stats cache (5 minute TTL)
+
+    2. **Institutional Memory:**
+       - Apify web scraping results
+       - Perplexity market research
+       - LinkedIn profile data
+       - Competitor intelligence
+
+    3. **Performance Metrics:**
+       - Cache hit rates by type
+       - Total cost savings (USD)
+       - Cache size statistics
+       - Most accessed entries
+
+    4. **Cost Analysis:**
+       - **Analysis cache hit**: Saves $15-25 per hit
+       - **Stage cache hit**: Saves $0.10-3 per stage
+       - **PDF cache**: Time savings (instant regeneration)
+       - **Institutional memory**: Saves Apify/Perplexity API costs
+
+    **Use Cases:**
+    - Monitor cache effectiveness
+    - Calculate ROI of caching strategy
+    - Identify optimization opportunities
+    - Plan cache TTL adjustments
+    - Budget API cost savings
+
+    **Response Structure:**
+    ```json
+    {
+      "success": true,
+      "data": {
+        "enhanced_cache": {
+          "analysis_cache": {
+            "total_records": 150,
+            "hit_rate": "65%",
+            "cost_saved_usd": 2475.00
+          },
+          "stage_cache": {...},
+          "pdf_cache": {...}
+        },
+        "institutional_memory": {
+          "total_records": 300,
+          "apify_cache_hits": 120,
+          "perplexity_cache_hits": 85
+        },
+        "summary": {
+          "total_cost_saved_usd": 3250.00,
+          "total_records": 450
+        },
+        "recommendations": [
+          "Analysis cache saved $3,250.00 total",
+          "Consider running clear_expired_cache() daily",
+          "High cache hit rate = significant cost savings"
+        ]
+      }
+    }
+    ```
+
+    **Monitoring Recommendations:**
+    - Check daily for cost optimization
+    - Run `clear_expired_cache()` periodically
+    - Monitor hit rates for TTL tuning
+    - Track trends over time
+
+    **Authentication:**
+    - Requires valid JWT token in Authorization header
+    - Admin privileges required
+
+    **Example:**
+    ```bash
+    curl -X GET https://api.example.com/api/admin/cache/statistics \\
+      -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    ```
+    """,
+    responses={
+        200: {
+            "description": "Cache statistics retrieved successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "data": {
+                            "summary": {
+                                "total_cost_saved_usd": 3250.00,
+                                "total_records": 450
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })
 async def get_cache_statistics_endpoint(current_user: dict = RequireAuth):
-    """
-    Get comprehensive cache statistics (Protected Admin endpoint)
-
-    Returns cache performance metrics including:
-    - Cache hit rates
-    - Total cost savings
-    - Cache sizes
-    - Most accessed entries
-
-    Requires valid JWT token in Authorization header
-    """
+    """Get cache statistics - comprehensive performance metrics and cost savings"""
     try:
         print(f"[AUTH] User {current_user['email']} accessing cache statistics")
 

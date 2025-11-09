@@ -24,6 +24,7 @@ from app.services.enrichment.sources.proxycurl import ProxycurlSource
 from app.services.enrichment.cache import EnrichmentCache
 from app.services.ai.openrouter_client import get_openrouter_client
 from app.core.supabase import supabase_service
+from app.services.enrichment.confidence_learner import ConfidenceLearner
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,9 @@ class ProgressiveEnrichmentOrchestrator:
 
         # Cache
         self.cache = EnrichmentCache(supabase_service)
+
+        # Learning system
+        self.confidence_learner = ConfidenceLearner()
 
     async def enrich_progressive(
         self,
@@ -355,33 +359,150 @@ class ProgressiveEnrichmentOrchestrator:
 
         return session
 
-    def _update_auto_fill_suggestions(
+    async def _update_auto_fill_suggestions(
         self,
         session: ProgressiveEnrichmentSession,
         new_data: Dict[str, Any],
+        source_name: str,
         confidence_threshold: float = 85.0
     ):
         """
-        Update auto-fill suggestions based on new data
+        Update auto-fill suggestions based on new data with learned confidence scores.
 
         Args:
             session: Current session
             new_data: New data from latest layer
+            source_name: Name of the data source
             confidence_threshold: Minimum confidence to auto-fill
         """
         for field, value in new_data.items():
             if value is not None and value != "":
-                # Calculate confidence based on source and data quality
-                confidence = self._estimate_field_confidence(field, value)
+                # Calculate confidence with learning system
+                confidence = await self._estimate_field_confidence(
+                    field,
+                    value,
+                    source=source_name
+                )
 
                 # Only auto-fill if confidence meets threshold
                 if confidence >= confidence_threshold:
                     session.fields_auto_filled[field] = value
                     session.confidence_scores[field] = confidence
 
-    def _estimate_field_confidence(self, field: str, value: Any) -> float:
+                    # Store suggestion in database for tracking
+                    await self._store_auto_fill_suggestion(
+                        session_id=session.session_id,
+                        field_name=field,
+                        suggested_value=value,
+                        source=source_name,
+                        confidence_score=confidence / 100.0  # Convert to 0-1 scale
+                    )
+
+    async def _store_auto_fill_suggestion(
+        self,
+        session_id: str,
+        field_name: str,
+        suggested_value: Any,
+        source: str,
+        confidence_score: float
+    ):
         """
-        Estimate confidence for a field value based on source
+        Store auto-fill suggestion in database for later edit tracking.
+
+        Args:
+            session_id: Enrichment session ID
+            field_name: Name of the field
+            suggested_value: The auto-filled value
+            source: Data source name
+            confidence_score: Confidence score (0-1)
+        """
+        try:
+            from app.core.database import get_db
+            db = next(get_db())
+
+            query = """
+                INSERT INTO auto_fill_suggestions (
+                    session_id,
+                    field_name,
+                    suggested_value,
+                    source,
+                    confidence_score,
+                    was_edited,
+                    created_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """
+
+            await db.execute(
+                query,
+                session_id,
+                field_name,
+                str(suggested_value),
+                source,
+                confidence_score,
+                False,  # was_edited = False initially
+                datetime.utcnow()
+            )
+            await db.commit()
+
+            logger.debug(
+                f"Stored auto-fill suggestion: {field_name}={suggested_value} "
+                f"from {source} (confidence: {confidence_score:.2%})"
+            )
+
+        except Exception as e:
+            logger.warning(f"Could not store auto-fill suggestion: {e}")
+
+    async def _estimate_field_confidence(
+        self,
+        field: str,
+        value: Any,
+        source: Optional[str] = None
+    ) -> float:
+        """
+        Estimate confidence for a field value based on source and learned patterns.
+
+        Args:
+            field: Field name
+            value: Field value
+            source: Data source name (optional)
+
+        Returns:
+            Confidence score (0-100) adjusted by learning system
+        """
+        # Base confidence by source type
+        base_confidence = self._get_base_confidence(field)
+
+        # If we have source info, check for learned adjustments
+        if source:
+            try:
+                # Query enrichment_source_performance for learned confidence
+                from app.core.database import get_db
+                db = next(get_db())
+
+                query = """
+                    SELECT confidence_score, learned_adjustment
+                    FROM enrichment_source_performance
+                    WHERE source = $1 AND field_name = $2
+                """
+                result = await db.execute(query, source, field)
+                row = result.fetchone()
+
+                if row and row[0] is not None:
+                    learned_confidence = float(row[0]) * 100  # Convert to 0-100 scale
+                    logger.debug(
+                        f"Using learned confidence for {field}/{source}: "
+                        f"{learned_confidence:.1f}% (base: {base_confidence:.1f}%)"
+                    )
+                    return learned_confidence
+
+            except Exception as e:
+                logger.warning(f"Could not fetch learned confidence: {e}")
+
+        return base_confidence
+
+    def _get_base_confidence(self, field: str) -> float:
+        """
+        Get base confidence score for a field (before learning adjustments).
 
         Returns:
             Confidence score (0-100)

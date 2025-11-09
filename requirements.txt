@@ -1,18 +1,98 @@
+# ============================================================================
+# STRATEGY AI BACKEND - PRODUCTION DEPENDENCIES
+# ============================================================================
+# All versions are pinned for reproducible builds and security.
+# Update versions deliberately and test thoroughly before deploying.
+# Run `pip list --outdated` to check for available updates.
+# ============================================================================
+
+# ============================================================================
+# CORE FRAMEWORK
+# ============================================================================
+
+# FastAPI - High-performance async web framework
 fastapi==0.115.6
+
+# Uvicorn - ASGI server with standard extras (websockets, watchfiles)
 uvicorn[standard]==0.34.0
+
+# Pydantic - Data validation and settings management
 pydantic==2.10.5
 pydantic-settings==2.7.1
+
+# Email validation for user registration
 email-validator==2.2.0
+
+# Environment variable management
 python-dotenv==1.0.1
+
+# ============================================================================
+# HTTP CLIENT & API INTEGRATIONS
+# ============================================================================
+
+# HTTP client for external API calls (OpenRouter, Perplexity, etc.)
 httpx==0.28.1
+
+# Multipart form data support for file uploads
 python-multipart==0.0.20
-sentry-sdk[fastapi]>=2.0.0
-supabase>=2.0.0
-apify-client>=1.7.0
-upstash-redis>=0.15.0
-pyjwt>=2.8.0
-python-jose[cryptography]>=3.3.0
-fpdf2>=2.8.2
-tenacity>=8.2.0
-beautifulsoup4>=4.12.0
-pyyaml
+
+# ============================================================================
+# EXTERNAL SERVICES
+# ============================================================================
+
+# Sentry - Error tracking and performance monitoring
+# Pinned to 2.19.2 - latest stable as of 2025-01
+sentry-sdk[fastapi]==2.19.2
+
+# Supabase - PostgreSQL database client
+# Pinned to 2.10.0 - latest stable
+supabase==2.10.0
+
+# Apify - Web scraping and data extraction
+# Pinned to 2.2.1 - latest stable version
+apify-client==2.2.1
+
+# Upstash Redis - Serverless Redis for caching and rate limiting
+# Pinned to 1.1.1 - latest stable
+upstash-redis==1.1.1
+
+# ============================================================================
+# AUTHENTICATION & SECURITY
+# ============================================================================
+
+# PyJWT - JSON Web Token implementation
+# Pinned to 2.10.0 - latest stable with security fixes
+pyjwt==2.10.0
+
+# Python-JOSE - JWT with cryptographic support
+# Pinned to 3.3.0 - stable version with cryptography extras
+python-jose[cryptography]==3.3.0
+
+# ============================================================================
+# UTILITIES
+# ============================================================================
+
+# FPDF2 - PDF generation library
+# Pinned to 2.8.2 - latest stable
+fpdf2==2.8.2
+
+# Tenacity - Retry library with exponential backoff
+# Pinned to 9.0.0 - latest stable
+tenacity==9.0.0
+
+# BeautifulSoup4 - HTML/XML parsing for web scraping
+# Pinned to 4.12.3 - latest stable
+beautifulsoup4==4.12.3
+
+# PyYAML - YAML parser for configuration files
+# Pinned to 6.0.2 - latest stable with security fixes
+pyyaml==6.0.2
+
+# ============================================================================
+# NOTES
+# ============================================================================
+# - All dependencies are pinned to exact versions for reproducibility
+# - Update strategy: Test updates in development, then staging, then production
+# - Security updates: Monitor GitHub security advisories and Dependabot
+# - Breaking changes: Read changelogs before upgrading major versions
+# ============================================================================

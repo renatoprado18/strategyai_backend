@@ -3,7 +3,10 @@ Database module for Supabase connection and operations
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+import logging
 from app.core.supabase import supabase_service, supabase_anon
+
+logger = logging.getLogger(__name__)
 
 # Table name
 TABLE_NAME = "submissions"
@@ -53,9 +56,9 @@ async def init_db():
         ON submissions FOR UPDATE
         USING (auth.role() = 'authenticated');
     """
-    print("[INFO] Supabase database initialization")
-    print("[INFO] Make sure you've created the submissions table in Supabase SQL Editor")
-    print("[INFO] See database.py docstring for SQL schema")
+    logger.info("[INFO] Supabase database initialization")
+    logger.info("[INFO] Make sure you've created the submissions table in Supabase SQL Editor")
+    logger.info("[INFO] See database.py docstring for SQL schema")
 
 
 # CRUD Operations
@@ -92,7 +95,7 @@ async def create_submission(
         else:
             raise Exception("Failed to create submission")
     except Exception as e:
-        print(f"[ERROR] Failed to create submission: {str(e)}")
+        logger.error(f"[ERROR] Failed to create submission: {str(e)}", exc_info=True)
         raise
 
 
@@ -106,7 +109,7 @@ async def get_submission(submission_id: int) -> Optional[Dict[str, Any]]:
             return response.data[0]
         return None
     except Exception as e:
-        print(f"[ERROR] Failed to get submission {submission_id}: {str(e)}")
+        logger.error(f"[ERROR] Failed to get submission {submission_id}: {str(e)}")
         return None
 
 
@@ -118,7 +121,7 @@ async def get_all_submissions() -> List[Dict[str, Any]]:
 
         return response.data if response.data else []
     except Exception as e:
-        print(f"[ERROR] Failed to get all submissions: {str(e)}")
+        logger.error(f"[ERROR] Failed to get all submissions: {str(e)}")
         return []
 
 
@@ -169,7 +172,7 @@ async def update_submission_status(
         if not response.data:
             raise Exception(f"Failed to update submission {submission_id}")
     except Exception as e:
-        print(f"[ERROR] Failed to update submission status: {str(e)}")
+        logger.error(f"[ERROR] Failed to update submission status: {str(e)}", exc_info=True)
         raise
 
 
@@ -257,7 +260,7 @@ async def update_submission_processing_state(
             data["processing_metadata"] = processing_metadata
 
         # Log state transition
-        print(f"[STATE_TRANSITION] Submission {submission_id}: "
+        logger.info(f"[STATE_TRANSITION] Submission {submission_id}: "
               f"processing_state='{processing_state}', user_status='{user_status}', "
               f"status='{backward_status}' (backward compat)")
 
@@ -270,7 +273,7 @@ async def update_submission_processing_state(
         return response.data[0] if response.data else None
 
     except Exception as e:
-        print(f"[ERROR] Failed to update submission processing state: {str(e)}")
+        logger.error(f"[ERROR] Failed to update submission processing state: {str(e)}", exc_info=True)
         raise
 
 
@@ -292,7 +295,7 @@ async def count_submissions() -> int:
         response = supabase_service.table(TABLE_NAME).select("id", count="exact").execute()
         return response.count if hasattr(response, 'count') else 0
     except Exception as e:
-        print(f"[ERROR] Failed to count submissions: {str(e)}")
+        logger.error(f"[ERROR] Failed to count submissions: {str(e)}")
         return 0
 
 
@@ -303,5 +306,5 @@ async def count_submissions_by_status(status: str) -> int:
         response = supabase_service.table(TABLE_NAME).select("id", count="exact").eq("status", status).execute()
         return response.count if hasattr(response, 'count') else 0
     except Exception as e:
-        print(f"[ERROR] Failed to count submissions by status: {str(e)}")
+        logger.error(f"[ERROR] Failed to count submissions by status: {str(e)}")
         return 0

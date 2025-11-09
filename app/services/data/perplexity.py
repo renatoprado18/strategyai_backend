@@ -12,6 +12,17 @@ from datetime import datetime
 
 # Import comprehensive prompt injection sanitization
 from app.core.security.prompt_sanitizer import sanitize_for_prompt, neutralize_injection_patterns
+from app.core.constants import (
+    HTTP_TIMEOUT_PERPLEXITY,
+    PERPLEXITY_MAX_TOKENS_DEFAULT,
+    PERPLEXITY_MAX_TOKENS_COMPETITORS,
+    PERPLEXITY_MAX_TOKENS_MARKET,
+    PERPLEXITY_MAX_TOKENS_COMPANY,
+    PERPLEXITY_MAX_TOKENS_SOLUTIONS,
+    PERPLEXITY_MAX_TOKENS_TEST,
+    MAX_RESEARCH_DATA_LENGTH,
+    PERPLEXITY_COMPANY_INTEL_DAYS
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +45,7 @@ def sanitize_research_data(data: str, max_length: int = 3000) -> str:
     # injection pattern detection, URL removal, and special character escaping)
     sanitized = sanitize_for_prompt(
         data,
-        max_length=max_length,
+        max_length=max_length if max_length else MAX_RESEARCH_DATA_LENGTH,
         remove_urls_flag=True,
         strict_mode=True  # Neutralize injection patterns
     )
@@ -55,7 +66,7 @@ PERPLEXITY_MODEL_FALLBACK = "perplexity/sonar"
 
 async def call_perplexity(
     prompt: str,
-    max_tokens: int = 4000,
+    max_tokens: int = PERPLEXITY_MAX_TOKENS_DEFAULT,
     temperature: float = 0.7,
     use_pro: bool = True
 ) -> Optional[str]:
@@ -97,7 +108,7 @@ async def call_perplexity(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_PERPLEXITY) as client:
             logger.info(f"[PERPLEXITY] Calling {model} for research...")
 
             response = await client.post(
@@ -112,7 +123,7 @@ async def call_perplexity(
                 logger.info(f"[PERPLEXITY] Research completed successfully ({len(content)} chars)")
 
                 # Sanitize to prevent content filter triggers
-                sanitized = sanitize_research_data(content, max_length=3000)
+                sanitized = sanitize_research_data(content, max_length=MAX_RESEARCH_DATA_LENGTH)
                 logger.info(f"[PERPLEXITY] Sanitized: {len(content)} → {len(sanitized)} chars")
 
                 return sanitized
@@ -166,7 +177,7 @@ Provide comprehensive competitor analysis including:
 Please provide specific numbers, percentages, and recent data where available.
 Include sources and dates for all information."""
 
-    result = await call_perplexity(prompt, max_tokens=6000)
+    result = await call_perplexity(prompt, max_tokens=PERPLEXITY_MAX_TOKENS_COMPETITORS)
 
     return {
         "query": f"Competitors of {company} in {industry}",
@@ -219,7 +230,7 @@ Include:
 Please provide specific numbers with currency and dates.
 Cite sources for all data points."""
 
-    result = await call_perplexity(prompt, max_tokens=5000)
+    result = await call_perplexity(prompt, max_tokens=PERPLEXITY_MAX_TOKENS_MARKET)
 
     return {
         "query": f"Market sizing for {industry} in {region}",
@@ -273,7 +284,7 @@ Provide detailed analysis including:
 Include specific examples, company names, dates, and quantitative data where available.
 Focus on actionable insights."""
 
-    result = await call_perplexity(prompt, max_tokens=5000)
+    result = await call_perplexity(prompt, max_tokens=PERPLEXITY_MAX_TOKENS_MARKET)
 
     return {
         "query": f"Industry trends for {industry} in {region}",
@@ -286,7 +297,7 @@ Focus on actionable insights."""
 async def research_company_intelligence(
     company: str,
     industry: str,
-    timeframe_days: int = 90
+    timeframe_days: int = PERPLEXITY_COMPANY_INTEL_DAYS
 ) -> Dict[str, Any]:
     """
     Company-specific intelligence with recent news and developments
@@ -333,7 +344,7 @@ Include:
 Include specific dates, sources, and quantitative metrics.
 Focus on information from the last {timeframe_days} days."""
 
-    result = await call_perplexity(prompt, max_tokens=5000)
+    result = await call_perplexity(prompt, max_tokens=PERPLEXITY_MAX_TOKENS_COMPANY)
 
     return {
         "query": f"Company intelligence for {company}",
@@ -396,7 +407,7 @@ Provide comprehensive analysis including:
 Include specific company names, metrics, dates, and quantitative results.
 Focus on actionable, implementable strategies."""
 
-    result = await call_perplexity(prompt, max_tokens=6000)
+    result = await call_perplexity(prompt, max_tokens=PERPLEXITY_MAX_TOKENS_SOLUTIONS)
 
     return {
         "query": f"Solution strategies for: {challenge}",
@@ -475,7 +486,7 @@ async def test_perplexity_connection():
     test_prompt = "What is the current market size of fintech in Brazil? Provide a brief answer with a specific number."
 
     logger.info("[PERPLEXITY] Testing API connection...")
-    result = await call_perplexity(test_prompt, max_tokens=500)
+    result = await call_perplexity(test_prompt, max_tokens=PERPLEXITY_MAX_TOKENS_TEST)
 
     if result:
         logger.info(f"[PERPLEXITY] ✅ Connection successful!")
