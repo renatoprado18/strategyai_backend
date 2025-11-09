@@ -54,7 +54,7 @@ apify-client==2.2.1
 
 # Upstash Redis - Serverless Redis for caching and rate limiting
 # Pinned to 1.1.1 - latest stable
-upstash-redis==1.1.1
+upstash-redis==1.5.0
 
 # ============================================================================
 # AUTHENTICATION & SECURITY
