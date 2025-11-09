@@ -24,11 +24,12 @@ from app.core.database import get_all_submissions
 # Import auth dependency
 from app.routes.auth import RequireAuth
 
-# Import sub-routers
-from app.routes import (
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Import sub-routers
+from app.routes import (
     reports_export,
     reports_import,
     reports_editing,
