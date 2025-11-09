@@ -7,7 +7,7 @@ from typing import Optional, List, Dict, Any, TypeVar
 import logging
 
 from app.repositories.base import BaseRepository
-from app.core.database import get_supabase_client
+from app.core.supabase import get_supabase_client
 from app.core.exceptions import DatabaseError, ResourceNotFound
 
 logger = logging.getLogger(__name__)
