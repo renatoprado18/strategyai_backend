@@ -40,8 +40,8 @@ from .models import (
     EnrichmentData,
     QuickEnrichmentData,
     DeepEnrichmentData,
-    SourceResult,
 )
+from .sources.base import SourceResult
 
 __all__ = [
     "EnrichmentOrchestrator",
