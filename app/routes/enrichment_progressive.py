@@ -7,6 +7,7 @@ for instant field auto-fill as data becomes available.
 
 import logging
 import asyncio
+import json
 from datetime import datetime
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
@@ -246,7 +247,7 @@ async def stream_progressive_enrichment(session_id: str):
                         "confidence_scores": session.confidence_scores,
                         "layer_result": session.layer1_result.dict() if session.layer1_result else {}
                     }
-                    yield f"event: layer1_complete\ndata: {str(layer1_data)}\n\n"
+                    yield f"event: layer1_complete\ndata: {json.dumps(layer1_data)}\n\n"
 
                 elif current_status == "layer2_complete":
                     # Send Layer 2 data
@@ -256,7 +257,7 @@ async def stream_progressive_enrichment(session_id: str):
                         "confidence_scores": session.confidence_scores,
                         "layer_result": session.layer2_result.dict() if session.layer2_result else {}
                     }
-                    yield f"event: layer2_complete\ndata: {str(layer2_data)}\n\n"
+                    yield f"event: layer2_complete\ndata: {json.dumps(layer2_data)}\n\n"
 
                 elif current_status == "complete":
                     # Send Layer 3 data (final)
@@ -268,7 +269,7 @@ async def stream_progressive_enrichment(session_id: str):
                         "total_cost_usd": session.total_cost_usd,
                         "total_duration_ms": session.total_duration_ms
                     }
-                    yield f"event: layer3_complete\ndata: {str(layer3_data)}\n\n"
+                    yield f"event: layer3_complete\ndata: {json.dumps(layer3_data)}\n\n"
 
                     # Clean up session after sending final data
                     del active_sessions[session_id]
