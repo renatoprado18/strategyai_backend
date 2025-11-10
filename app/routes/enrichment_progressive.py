@@ -122,6 +122,25 @@ async def start_progressive_enrichment(
         Session ID and stream URL for SSE connection
     """
     try:
+        # Generate session ID upfront
+        import uuid
+        session_id = str(uuid.uuid4())
+
+        # Create placeholder session immediately
+        from app.services.enrichment.progressive_orchestrator import ProgressiveEnrichmentSession
+        placeholder_session = ProgressiveEnrichmentSession(
+            session_id=session_id,
+            website_url=request.website_url,
+            user_email=request.user_email,
+            status="processing",
+            started_at=datetime.now(),
+            fields_auto_filled={},
+            confidence_scores={},
+            total_cost_usd=0.0,
+            total_duration_ms=0
+        )
+        active_sessions[session_id] = placeholder_session
+
         # Create orchestrator
         orchestrator = ProgressiveEnrichmentOrchestrator()
 
@@ -135,20 +154,20 @@ async def start_progressive_enrichment(
                     existing_data=request.existing_data
                 )
 
-                # Store session for SSE streaming
-                active_sessions[session.session_id] = session
+                # Update session with enrichment results (keep same session_id)
+                session.session_id = session_id  # Use our session_id
+                active_sessions[session_id] = session
 
-                logger.info(f"Progressive enrichment complete: {session.session_id}")
+                logger.info(f"Progressive enrichment complete: {session_id}")
 
             except Exception as e:
                 logger.error(f"Progressive enrichment failed: {str(e)}")
+                # Update session with error status
+                if session_id in active_sessions:
+                    active_sessions[session_id].status = "error"
 
         # Schedule background enrichment
         background_tasks.add_task(run_enrichment)
-
-        # Generate temporary session ID for tracking
-        import uuid
-        session_id = str(uuid.uuid4())
 
         return ProgressiveEnrichmentResponse(
             session_id=session_id,
