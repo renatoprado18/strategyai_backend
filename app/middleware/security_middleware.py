@@ -88,7 +88,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
 
         # Remove server header (security through obscurity)
-        response.headers.pop("Server", None)
+        # Note: MutableHeaders doesn't support .pop(), use del instead
+        if "Server" in response.headers:
+            del response.headers["Server"]
 
         return response
 
