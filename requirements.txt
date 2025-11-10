@@ -49,6 +49,11 @@ sentry-sdk[fastapi]==2.19.2
 # Pinned to 2.10.0 - latest stable
 supabase==2.10.0
 
+# SQLAlchemy - SQL toolkit and ORM with async support
+# Used for advanced database queries in Phase 6 ML learning system
+# Pinned to 2.0.36 - latest stable with async extras
+sqlalchemy[asyncio]==2.0.36
+
 # Apify - Web scraping and data extraction
 # Pinned to 2.2.1 - latest stable version
 apify-client==2.2.1

@@ -24,6 +24,7 @@ from app.core.database import get_all_submissions
 # Import auth dependency
 from app.routes.auth import RequireAuth
 
+import json
 import logging
 
 logger = logging.getLogger(__name__)
