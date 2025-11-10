@@ -472,42 +472,14 @@ class ProgressiveEnrichmentOrchestrator:
             suggested_value: The auto-filled value
             source: Data source name
             confidence_score: Confidence score (0-1)
+
+        Note: ML learning system disabled - requires SQLAlchemy to Supabase rewrite
         """
-        try:
-            from app.core.database import get_db
-            db = next(get_db())
-
-            query = """
-                INSERT INTO auto_fill_suggestions (
-                    session_id,
-                    field_name,
-                    suggested_value,
-                    source,
-                    confidence_score,
-                    was_edited,
-                    created_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-            """
-
-            await db.execute(
-                query,
-                session_id,
-                field_name,
-                str(suggested_value),
-                source,
-                confidence_score,
-                False,  # was_edited = False initially
-                datetime.utcnow()
-            )
-            await db.commit()
-
-            logger.debug(
-                f"Stored auto-fill suggestion: {field_name}={suggested_value} "
-                f"from {source} (confidence: {confidence_score:.2%})"
-            )
-
-        except Exception as e:
-            logger.warning(f"Could not store auto-fill suggestion: {e}")
+        # ML learning system disabled - gracefully skip
+        logger.debug(
+            f"ML learning disabled - skipping auto-fill suggestion storage for {field_name}"
+        )
+        return
 
     async def _estimate_field_confidence(
         self,
@@ -524,37 +496,12 @@ class ProgressiveEnrichmentOrchestrator:
             source: Data source name (optional)
 
         Returns:
-            Confidence score (0-100) adjusted by learning system
+            Confidence score (0-100) - uses base confidence only (ML learning disabled)
+
+        Note: ML learning system disabled - requires SQLAlchemy to Supabase rewrite
         """
-        # Base confidence by source type
+        # ML learning disabled - use base confidence only
         base_confidence = self._get_base_confidence(field)
-
-        # If we have source info, check for learned adjustments
-        if source:
-            try:
-                # Query enrichment_source_performance for learned confidence
-                from app.core.database import get_db
-                db = next(get_db())
-
-                query = """
-                    SELECT confidence_score, learned_adjustment
-                    FROM enrichment_source_performance
-                    WHERE source = $1 AND field_name = $2
-                """
-                result = await db.execute(query, source, field)
-                row = result.fetchone()
-
-                if row and row[0] is not None:
-                    learned_confidence = float(row[0]) * 100  # Convert to 0-100 scale
-                    logger.debug(
-                        f"Using learned confidence for {field}/{source}: "
-                        f"{learned_confidence:.1f}% (base: {base_confidence:.1f}%)"
-                    )
-                    return learned_confidence
-
-            except Exception as e:
-                logger.warning(f"Could not fetch learned confidence: {e}")
-
         return base_confidence
 
     def _get_base_confidence(self, field: str) -> float:
@@ -611,6 +558,37 @@ class ProgressiveEnrichmentOrchestrator:
             confidence=0.0
         )
 
+    def _serialize_layer_data(self, layer_result) -> Optional[dict]:
+        """
+        Serialize layer result with datetime conversion to ISO format.
+
+        Args:
+            layer_result: QuickEnrichmentData or DeepEnrichmentData
+
+        Returns:
+            Dictionary with all datetime fields converted to ISO strings
+        """
+        if not layer_result:
+            return None
+
+        # Convert to dict
+        data = layer_result.dict()
+
+        # Convert all datetime fields to ISO strings
+        datetime_fields = [
+            'quick_completed_at',
+            'deep_completed_at',
+            'created_at',
+            'updated_at'
+        ]
+
+        for field in datetime_fields:
+            if field in data and data[field] is not None:
+                if isinstance(data[field], datetime):
+                    data[field] = data[field].isoformat()
+
+        return data
+
     async def _cache_session(self, cache_key: str, session: ProgressiveEnrichmentSession):
         """
         Cache complete progressive enrichment session for 30 days.
@@ -620,10 +598,11 @@ class ProgressiveEnrichmentOrchestrator:
         Progressive sessions contain multiple layers of data.
         """
         try:
+            # Serialize layer results with datetime conversion
             cache_data = {
-                "layer1": session.layer1_result.dict() if session.layer1_result else None,
-                "layer2": session.layer2_result.dict() if session.layer2_result else None,
-                "layer3": session.layer3_result.dict() if session.layer3_result else None,
+                "layer1": self._serialize_layer_data(session.layer1_result),
+                "layer2": self._serialize_layer_data(session.layer2_result),
+                "layer3": self._serialize_layer_data(session.layer3_result),
                 "fields_auto_filled": session.fields_auto_filled,
                 "confidence_scores": session.confidence_scores,
                 "total_duration_ms": session.total_duration_ms,

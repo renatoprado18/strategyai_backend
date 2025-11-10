@@ -166,6 +166,33 @@ class EnrichmentCache:
         )
         return None
 
+    def _serialize_datetime_fields(self, data_dict: dict) -> dict:
+        """
+        Convert all datetime objects in a dictionary to ISO format strings.
+
+        Args:
+            data_dict: Dictionary that may contain datetime objects
+
+        Returns:
+            Dictionary with all datetime objects converted to ISO strings
+        """
+        serialized = {}
+        for key, value in data_dict.items():
+            if isinstance(value, datetime):
+                serialized[key] = value.isoformat()
+            elif isinstance(value, dict):
+                serialized[key] = self._serialize_datetime_fields(value)
+            elif isinstance(value, list):
+                serialized[key] = [
+                    self._serialize_datetime_fields(item) if isinstance(item, dict)
+                    else item.isoformat() if isinstance(item, datetime)
+                    else item
+                    for item in value
+                ]
+            else:
+                serialized[key] = value
+        return serialized
+
     async def set_quick(
         self, domain: str, data: QuickEnrichmentData
     ) -> None:
@@ -180,13 +207,16 @@ class EnrichmentCache:
         expires_at = datetime.now() + timedelta(days=self.ttl_days)
 
         try:
+            # Serialize data with datetime conversion
+            quick_data_serialized = self._serialize_datetime_fields(data.dict(exclude_none=True))
+
             # Store in database
             await supabase_service.table("enrichment_results").upsert(
                 {
                     "cache_key": cache_key,
                     "website": data.website,
                     "domain": domain,
-                    "quick_data": data.dict(exclude_none=True),
+                    "quick_data": quick_data_serialized,
                     "quick_completed_at": datetime.now().isoformat(),
                     "quick_duration_ms": data.quick_duration_ms,
                     "source_attribution": data.source_attribution,
@@ -204,9 +234,9 @@ class EnrichmentCache:
                 on_conflict="cache_key",
             ).execute()
 
-            # Store in memory
+            # Store in memory (keep datetime objects for in-memory comparisons)
             _in_memory_cache[cache_key] = {
-                "data": data.dict(exclude_none=True),
+                "data": quick_data_serialized,  # Use serialized version for consistency
                 "expires_at": expires_at,
             }
 
@@ -329,13 +359,16 @@ class EnrichmentCache:
         expires_at = datetime.now() + timedelta(days=self.ttl_days)
 
         try:
+            # Serialize data with datetime conversion
+            deep_data_serialized = self._serialize_datetime_fields(data.dict(exclude_none=True))
+
             # Store in database
             result = await supabase_service.table("enrichment_results").upsert(
                 {
                     "cache_key": cache_key,
                     "website": data.website,
                     "domain": domain,
-                    "deep_data": data.dict(exclude_none=True),
+                    "deep_data": deep_data_serialized,
                     "deep_completed_at": datetime.now().isoformat(),
                     "deep_duration_ms": data.deep_duration_ms,
                     "source_attribution": data.source_attribution,
@@ -352,9 +385,9 @@ class EnrichmentCache:
                 on_conflict="cache_key",
             ).execute()
 
-            # Store in memory
+            # Store in memory (use serialized version for consistency)
             _in_memory_cache[cache_key] = {
-                "data": data.dict(exclude_none=True),
+                "data": deep_data_serialized,
                 "expires_at": expires_at,
             }
 

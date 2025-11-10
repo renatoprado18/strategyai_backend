@@ -74,9 +74,7 @@ class ProxycurlSource(EnrichmentSource):
         self.api_key = getattr(settings, "proxycurl_api_key", None)
 
         if not self.api_key:
-            logger.warning(
-                "Proxycurl API key not configured - enrichment will fail"
-            )
+            logger.debug("[Proxycurl] API key not configured - will skip enrichment when called")
 
     async def enrich(self, domain: str, **kwargs) -> SourceResult:
         """
@@ -96,14 +94,14 @@ class ProxycurlSource(EnrichmentSource):
         try:
             # Gracefully handle missing API key (return empty result)
             if not self.api_key:
-                logger.info("Proxycurl API key not configured - skipping")
+                logger.info("[Proxycurl] API key not configured - skipping enrichment")
                 return SourceResult(
                     source_name=self.name,
                     success=False,
                     data={},
                     cost_usd=0.0,
                     duration_ms=0,
-                    error_message="Proxycurl API key not configured"
+                    error_message="API key not configured"
                 )
 
             linkedin_url = kwargs.get("linkedin_url")
@@ -125,12 +123,14 @@ class ProxycurlSource(EnrichmentSource):
             duration_ms = int((time.time() - start_time) * 1000)
 
             logger.info(
-                f"Proxycurl enriched LinkedIn profile: "
+                f"[Proxycurl] Enriched LinkedIn profile: "
                 f"{company_data.get('company_name', 'Unknown')} in {duration_ms}ms",
                 extra={
+                    "component": "proxycurl",
                     "domain": domain,
                     "linkedin_url": linkedin_url,
                     "followers": company_data.get("linkedin_followers"),
+                    "duration_ms": duration_ms,
                 },
             )
 
@@ -145,7 +145,8 @@ class ProxycurlSource(EnrichmentSource):
         except httpx.TimeoutException:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.warning(
-                f"Timeout querying Proxycurl after {duration_ms}ms"
+                f"[Proxycurl] Request timeout after {duration_ms}ms",
+                extra={"component": "proxycurl", "duration_ms": duration_ms}
             )
             raise Exception(f"Request timeout after {self.timeout}s")
 
@@ -154,17 +155,18 @@ class ProxycurlSource(EnrichmentSource):
 
             if e.response.status_code == 404:
                 logger.info(
-                    f"LinkedIn profile not found: {linkedin_url}",
-                    extra={"linkedin_url": linkedin_url, "status": 404},
+                    f"[Proxycurl] LinkedIn profile not found: {linkedin_url}",
+                    extra={"component": "proxycurl", "linkedin_url": linkedin_url, "status": 404, "duration_ms": duration_ms},
                 )
             elif e.response.status_code == 429:
-                logger.error(
-                    "Proxycurl rate limit exceeded",
-                    extra={"status": 429},
+                logger.warning(
+                    "[Proxycurl] Rate limit exceeded - retry later",
+                    extra={"component": "proxycurl", "status": 429, "duration_ms": duration_ms},
                 )
             else:
                 logger.warning(
-                    f"HTTP error {e.response.status_code} from Proxycurl"
+                    f"[Proxycurl] HTTP {e.response.status_code} error",
+                    extra={"component": "proxycurl", "status": e.response.status_code, "duration_ms": duration_ms}
                 )
 
             raise
@@ -172,8 +174,9 @@ class ProxycurlSource(EnrichmentSource):
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.error(
-                f"Error querying Proxycurl: {e}",
+                f"[Proxycurl] Unexpected error: {str(e)}",
                 exc_info=True,
+                extra={"component": "proxycurl", "duration_ms": duration_ms, "error_type": type(e).__name__}
             )
             raise
 
@@ -235,16 +238,16 @@ class ProxycurlSource(EnrichmentSource):
 
             if linkedin_url:
                 logger.debug(
-                    f"Resolved LinkedIn URL for {clean_domain}: {linkedin_url}",
-                    extra={"domain": clean_domain, "linkedin_url": linkedin_url},
+                    f"[Proxycurl] Resolved LinkedIn URL for {clean_domain}: {linkedin_url}",
+                    extra={"component": "proxycurl", "domain": clean_domain, "linkedin_url": linkedin_url},
                 )
 
             return linkedin_url
 
         except Exception as e:
-            logger.error(
-                f"Error resolving LinkedIn URL for {domain}: {e}",
-                exc_info=True,
+            logger.warning(
+                f"[Proxycurl] LinkedIn URL resolution failed for {domain}: {str(e)}",
+                extra={"component": "proxycurl", "domain": domain, "error_type": type(e).__name__}
             )
             return None
 

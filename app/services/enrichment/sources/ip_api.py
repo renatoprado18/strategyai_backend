@@ -86,8 +86,8 @@ class IpApiSource(EnrichmentSource):
             try:
                 ip_address = socket.gethostbyname(clean_domain)
                 logger.debug(
-                    f"Resolved {clean_domain} to IP: {ip_address}",
-                    extra={"domain": clean_domain, "ip": ip_address},
+                    f"[IP API] Resolved {clean_domain} to IP: {ip_address}",
+                    extra={"component": "ip_api", "domain": clean_domain, "ip": ip_address},
                 )
             except socket.gaierror as e:
                 raise Exception(f"Could not resolve domain to IP: {e}")
@@ -137,12 +137,14 @@ class IpApiSource(EnrichmentSource):
             duration_ms = int((time.time() - start_time) * 1000)
 
             logger.info(
-                f"IP location resolved for {domain}: "
+                f"[IP API] Location resolved for {domain}: "
                 f"{enriched_data.get('ip_location', 'Unknown')} in {duration_ms}ms",
                 extra={
+                    "component": "ip_api",
                     "domain": domain,
                     "ip": ip_address,
                     "location": enriched_data.get("ip_location"),
+                    "duration_ms": duration_ms,
                 },
             )
 
@@ -157,23 +159,24 @@ class IpApiSource(EnrichmentSource):
         except httpx.TimeoutException:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.warning(
-                f"Timeout querying ip-api.com for {domain} after {duration_ms}ms"
+                f"[IP API] Request timeout for {domain} after {duration_ms}ms",
+                extra={"component": "ip_api", "domain": domain, "duration_ms": duration_ms}
             )
             raise Exception(f"Request timeout after {self.timeout}s")
 
         except httpx.HTTPStatusError as e:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.warning(
-                f"HTTP error {e.response.status_code} from ip-api.com for {domain}"
+                f"[IP API] HTTP {e.response.status_code} error for {domain}",
+                extra={"component": "ip_api", "domain": domain, "status": e.response.status_code, "duration_ms": duration_ms}
             )
-            raise Exception(
-                f"HTTP {e.response.status_code}: {e.response.reason_phrase}"
-            )
+            raise Exception(f"HTTP {e.response.status_code}: {e.response.reason_phrase}")
 
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.error(
-                f"Error getting IP location for {domain}: {e}",
+                f"[IP API] Unexpected error for {domain}: {str(e)}",
                 exc_info=True,
+                extra={"component": "ip_api", "domain": domain, "duration_ms": duration_ms, "error_type": type(e).__name__}
             )
             raise

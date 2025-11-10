@@ -70,9 +70,7 @@ class ClearbitSource(EnrichmentSource):
         self.api_key = getattr(settings, "clearbit_api_key", None)
 
         if not self.api_key:
-            logger.warning(
-                "Clearbit API key not configured - enrichment will fail"
-            )
+            logger.debug("[Clearbit] API key not configured - will skip enrichment when called")
 
     async def enrich(self, domain: str, **kwargs) -> SourceResult:
         """
@@ -90,14 +88,14 @@ class ClearbitSource(EnrichmentSource):
         try:
             # Gracefully handle missing API key (return empty result)
             if not self.api_key:
-                logger.info("Clearbit API key not configured - skipping")
+                logger.info("[Clearbit] API key not configured - skipping enrichment")
                 return SourceResult(
                     source_name=self.name,
                     success=False,
                     data={},
                     cost_usd=0.0,
                     duration_ms=0,
-                    error_message="Clearbit API key not configured"
+                    error_message="API key not configured"
                 )
 
             # Clean domain
@@ -119,15 +117,13 @@ class ClearbitSource(EnrichmentSource):
 
                 # Handle 404 (company not found)
                 if response.status_code == 404:
-                    raise Exception(
-                        f"Company not found in Clearbit: {clean_domain}"
-                    )
+                    logger.info(f"[Clearbit] Company not found: {clean_domain}")
+                    raise Exception(f"Company not found: {clean_domain}")
 
                 # Handle 402 (payment required / credits exhausted)
                 if response.status_code == 402:
-                    raise Exception(
-                        "Clearbit credits exhausted - payment required"
-                    )
+                    logger.warning("[Clearbit] Credits exhausted - payment required")
+                    raise Exception("Credits exhausted - payment required")
 
                 response.raise_for_status()
                 data = response.json()
@@ -241,12 +237,14 @@ class ClearbitSource(EnrichmentSource):
             duration_ms = int((time.time() - start_time) * 1000)
 
             logger.info(
-                f"Clearbit enriched {clean_domain}: "
+                f"[Clearbit] Enriched {clean_domain}: "
                 f"{enriched_data.get('company_name', 'Unknown')} in {duration_ms}ms",
                 extra={
+                    "component": "clearbit",
                     "domain": clean_domain,
                     "company": enriched_data.get("company_name"),
                     "fields": len(enriched_data),
+                    "duration_ms": duration_ms,
                 },
             )
 
@@ -261,7 +259,8 @@ class ClearbitSource(EnrichmentSource):
         except httpx.TimeoutException:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.warning(
-                f"Timeout querying Clearbit for {domain} after {duration_ms}ms"
+                f"[Clearbit] Request timeout for {domain} after {duration_ms}ms",
+                extra={"component": "clearbit", "domain": domain, "duration_ms": duration_ms}
             )
             raise Exception(f"Request timeout after {self.timeout}s")
 
@@ -273,17 +272,18 @@ class ClearbitSource(EnrichmentSource):
 
             if e.response.status_code == 404:
                 logger.info(
-                    f"Company not found in Clearbit: {domain}",
-                    extra={"domain": domain, "status": 404},
+                    f"[Clearbit] Company not found: {domain}",
+                    extra={"component": "clearbit", "domain": domain, "status": 404, "duration_ms": duration_ms},
                 )
             elif e.response.status_code == 402:
-                logger.error(
-                    "Clearbit credits exhausted - payment required",
-                    extra={"status": 402},
+                logger.warning(
+                    "[Clearbit] Credits exhausted - payment required",
+                    extra={"component": "clearbit", "status": 402, "duration_ms": duration_ms},
                 )
             else:
                 logger.warning(
-                    f"HTTP error {e.response.status_code} from Clearbit for {domain}"
+                    f"[Clearbit] HTTP {e.response.status_code} error for {domain}",
+                    extra={"component": "clearbit", "domain": domain, "status": e.response.status_code, "duration_ms": duration_ms}
                 )
 
             raise
@@ -291,7 +291,8 @@ class ClearbitSource(EnrichmentSource):
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.error(
-                f"Error querying Clearbit for {domain}: {e}",
+                f"[Clearbit] Unexpected error for {domain}: {str(e)}",
                 exc_info=True,
+                extra={"component": "clearbit", "domain": domain, "duration_ms": duration_ms, "error_type": type(e).__name__}
             )
             raise

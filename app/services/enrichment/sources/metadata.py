@@ -172,9 +172,8 @@ class MetadataSource(EnrichmentSource):
             duration_ms = int((time.time() - start_time) * 1000)
 
             logger.info(
-                f"Metadata extracted from {domain} in {duration_ms}ms "
-                f"({len(data)} fields)",
-                extra={"domain": domain, "fields_extracted": len(data)},
+                f"[Metadata] Extracted from {domain} in {duration_ms}ms ({len(data)} fields)",
+                extra={"component": "metadata", "domain": domain, "fields_extracted": len(data), "duration_ms": duration_ms},
             )
 
             return SourceResult(
@@ -188,24 +187,25 @@ class MetadataSource(EnrichmentSource):
         except httpx.TimeoutException as e:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.warning(
-                f"Timeout extracting metadata from {domain} after {duration_ms}ms"
+                f"[Metadata] Request timeout for {domain} after {duration_ms}ms",
+                extra={"component": "metadata", "domain": domain, "duration_ms": duration_ms}
             )
             raise Exception(f"Request timeout after {self.timeout}s")
 
         except httpx.HTTPStatusError as e:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.warning(
-                f"HTTP error {e.response.status_code} from {domain}"
+                f"[Metadata] HTTP {e.response.status_code} error for {domain}",
+                extra={"component": "metadata", "domain": domain, "status": e.response.status_code, "duration_ms": duration_ms}
             )
-            raise Exception(
-                f"HTTP {e.response.status_code}: {e.response.reason_phrase}"
-            )
+            raise Exception(f"HTTP {e.response.status_code}: {e.response.reason_phrase}")
 
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.error(
-                f"Error extracting metadata from {domain}: {e}",
+                f"[Metadata] Unexpected error for {domain}: {str(e)}",
                 exc_info=True,
+                extra={"component": "metadata", "domain": domain, "duration_ms": duration_ms, "error_type": type(e).__name__}
             )
             raise
 

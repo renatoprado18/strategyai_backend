@@ -74,9 +74,7 @@ class GooglePlacesSource(EnrichmentSource):
         self.api_key = getattr(settings, "google_places_api_key", None)
 
         if not self.api_key:
-            logger.warning(
-                "Google Places API key not configured - enrichment will fail"
-            )
+            logger.debug("[Google Places] API key not configured - will skip enrichment when called")
 
     async def enrich(self, domain: str, **kwargs) -> SourceResult:
         """
@@ -96,14 +94,14 @@ class GooglePlacesSource(EnrichmentSource):
         try:
             # Gracefully handle missing API key (return empty result)
             if not self.api_key:
-                logger.info("Google Places API key not configured - skipping")
+                logger.info("[Google Places] API key not configured - skipping enrichment")
                 return SourceResult(
                     source_name=self.name,
                     success=False,
                     data={},
                     cost_usd=0.0,
                     duration_ms=0,
-                    error_message="Google Places API key not configured"
+                    error_message="API key not configured"
                 )
 
             company_name = kwargs.get("company_name")
@@ -128,12 +126,14 @@ class GooglePlacesSource(EnrichmentSource):
             duration_ms = int((time.time() - start_time) * 1000)
 
             logger.info(
-                f"Google Places enriched {company_name}: "
+                f"[Google Places] Enriched {company_name}: "
                 f"{place_data.get('address', 'Unknown')} in {duration_ms}ms",
                 extra={
+                    "component": "google_places",
                     "domain": domain,
                     "company": company_name,
                     "place_id": place_id,
+                    "duration_ms": duration_ms,
                 },
             )
 
@@ -148,15 +148,17 @@ class GooglePlacesSource(EnrichmentSource):
         except httpx.TimeoutException:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.warning(
-                f"Timeout querying Google Places after {duration_ms}ms"
+                f"[Google Places] Request timeout after {duration_ms}ms",
+                extra={"component": "google_places", "duration_ms": duration_ms}
             )
             raise Exception(f"Request timeout after {self.timeout}s")
 
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.error(
-                f"Error querying Google Places: {e}",
+                f"[Google Places] Unexpected error: {str(e)}",
                 exc_info=True,
+                extra={"component": "google_places", "duration_ms": duration_ms, "error_type": type(e).__name__}
             )
             raise
 
@@ -183,9 +185,9 @@ class GooglePlacesSource(EnrichmentSource):
             data = response.json()
 
         if data.get("status") == "ZERO_RESULTS":
-            logger.debug(
-                f"No results found in Google Places for: {query}",
-                extra={"query": query},
+            logger.info(
+                f"[Google Places] No results found for: {query}",
+                extra={"component": "google_places", "query": query},
             )
             return None
 
@@ -198,8 +200,8 @@ class GooglePlacesSource(EnrichmentSource):
         if candidates:
             place_id = candidates[0].get("place_id")
             logger.debug(
-                f"Found place ID {place_id} for query: {query}",
-                extra={"query": query, "place_id": place_id},
+                f"[Google Places] Found place ID {place_id} for query: {query}",
+                extra={"component": "google_places", "query": query, "place_id": place_id},
             )
             return place_id
 

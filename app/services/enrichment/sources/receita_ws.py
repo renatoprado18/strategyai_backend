@@ -111,12 +111,14 @@ class ReceitaWSSource(EnrichmentSource):
             duration_ms = int((time.time() - start_time) * 1000)
 
             logger.info(
-                f"CNPJ data retrieved for {cnpj_clean}: "
+                f"[ReceitaWS] CNPJ data retrieved for {cnpj_clean}: "
                 f"{cnpj_data.get('legal_name', 'Unknown')} in {duration_ms}ms",
                 extra={
+                    "component": "receita_ws",
                     "domain": domain,
                     "cnpj": cnpj_clean,
                     "company": cnpj_data.get("legal_name"),
+                    "duration_ms": duration_ms,
                 },
             )
 
@@ -131,15 +133,17 @@ class ReceitaWSSource(EnrichmentSource):
         except httpx.TimeoutException:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.warning(
-                f"Timeout querying ReceitaWS after {duration_ms}ms"
+                f"[ReceitaWS] Request timeout after {duration_ms}ms",
+                extra={"component": "receita_ws", "duration_ms": duration_ms}
             )
             raise Exception(f"Request timeout after {self.timeout}s")
 
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             logger.error(
-                f"Error querying ReceitaWS: {e}",
+                f"[ReceitaWS] Unexpected error: {str(e)}",
                 exc_info=True,
+                extra={"component": "receita_ws", "duration_ms": duration_ms, "error_type": type(e).__name__}
             )
             raise
 
@@ -170,20 +174,21 @@ class ReceitaWSSource(EnrichmentSource):
                 first_match = data[0]
                 cnpj = first_match.get("cnpj")
                 logger.debug(
-                    f"Found CNPJ {cnpj} for company name '{company_name}'",
-                    extra={"company_name": company_name, "cnpj": cnpj},
+                    f"[ReceitaWS] Found CNPJ {cnpj} for company '{company_name}'",
+                    extra={"component": "receita_ws", "company_name": company_name, "cnpj": cnpj},
                 )
                 return cnpj
 
-            logger.warning(
-                f"No CNPJ matches found for company name: {company_name}"
+            logger.info(
+                f"[ReceitaWS] No CNPJ found for company: {company_name}",
+                extra={"component": "receita_ws", "company_name": company_name}
             )
             return None
 
         except Exception as e:
-            logger.error(
-                f"Error searching CNPJ for '{company_name}': {e}",
-                exc_info=True,
+            logger.warning(
+                f"[ReceitaWS] CNPJ search failed for '{company_name}': {str(e)}",
+                extra={"component": "receita_ws", "company_name": company_name, "error_type": type(e).__name__}
             )
             return None
 
