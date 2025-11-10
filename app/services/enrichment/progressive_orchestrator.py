@@ -102,7 +102,7 @@ class ProgressiveEnrichmentOrchestrator:
         self.proxycurl_source = ProxycurlSource()
 
         # Cache
-        self.cache = EnrichmentCache(supabase_service)
+        self.cache = EnrichmentCache(ttl_days=30)
 
         # Learning system (optional - Phase 6)
         self.confidence_learner = ConfidenceLearner() if CONFIDENCE_LEARNER_AVAILABLE else None
@@ -251,8 +251,8 @@ class ProgressiveEnrichmentOrchestrator:
 
             layer2_tasks = [
                 self.clearbit_source.enrich(domain),
-                self.receita_ws_source.enrich_by_name(company_name) if company_name else self._empty_result(),
-                self.google_places_source.enrich(company_name, location) if company_name else self._empty_result()
+                self.receita_ws_source.enrich(domain, company_name=company_name) if company_name else self._empty_result(),
+                self.google_places_source.enrich(domain, company_name=company_name, city=location) if company_name else self._empty_result()
             ]
 
             layer2_results = await asyncio.gather(*layer2_tasks, return_exceptions=True)
@@ -334,7 +334,7 @@ class ProgressiveEnrichmentOrchestrator:
                 linkedin_url = existing_data.get("linkedin_company") if existing_data else None
                 if linkedin_url or company_name:
                     layer3_tasks.append(
-                        self.proxycurl_source.enrich(company_name, linkedin_url)
+                        self.proxycurl_source.enrich(domain, linkedin_url=linkedin_url, company_name=company_name)
                     )
             except Exception as e:
                 logger.warning(f"Failed to prepare Proxycurl enrichment (continuing anyway): {e}")
@@ -612,17 +612,54 @@ class ProgressiveEnrichmentOrchestrator:
         )
 
     async def _cache_session(self, cache_key: str, session: ProgressiveEnrichmentSession):
-        """Cache complete session for 30 days"""
-        cache_data = {
-            "layer1": session.layer1_result.dict(),
-            "layer2": session.layer2_result.dict(),
-            "layer3": session.layer3_result.dict(),
-            "fields_auto_filled": session.fields_auto_filled,
-            "confidence_scores": session.confidence_scores
-        }
+        """
+        Cache complete progressive enrichment session for 30 days.
 
-        await self.cache.set(
-            cache_key,
-            cache_data,
-            ttl_days=30
-        )
+        Note: Currently stores in database via direct Supabase call since
+        EnrichmentCache.set_quick/set_deep are designed for single enrichment types.
+        Progressive sessions contain multiple layers of data.
+        """
+        try:
+            cache_data = {
+                "layer1": session.layer1_result.dict() if session.layer1_result else None,
+                "layer2": session.layer2_result.dict() if session.layer2_result else None,
+                "layer3": session.layer3_result.dict() if session.layer3_result else None,
+                "fields_auto_filled": session.fields_auto_filled,
+                "confidence_scores": session.confidence_scores,
+                "total_duration_ms": session.total_duration_ms,
+                "total_cost_usd": session.total_cost_usd,
+                "status": session.status
+            }
+
+            expires_at = datetime.now() + timedelta(days=30)
+
+            # Store progressive session in database
+            await supabase_service.table("enrichment_sessions").upsert(
+                {
+                    "cache_key": cache_key,
+                    "session_id": session.session_id,
+                    "website_url": session.website_url,
+                    "user_email": session.user_email,
+                    "session_data": cache_data,
+                    "total_cost_usd": session.total_cost_usd,
+                    "total_duration_ms": session.total_duration_ms,
+                    "status": session.status,
+                    "expires_at": expires_at.isoformat(),
+                    "created_at": datetime.now().isoformat(),
+                    "updated_at": datetime.now().isoformat(),
+                },
+                on_conflict="cache_key",
+            ).execute()
+
+            logger.info(
+                f"Cached progressive enrichment session: {cache_key}",
+                extra={
+                    "session_id": session.session_id,
+                    "cost": session.total_cost_usd,
+                    "duration_ms": session.total_duration_ms,
+                    "expires_at": expires_at.isoformat()
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to cache progressive session: {e}", exc_info=True)
+            raise

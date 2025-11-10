@@ -95,6 +95,71 @@ class AutoFillSuggestion(BaseModel):
 
 
 # ============================================================================
+# FIELD TRANSLATION (Backend → Frontend)
+# ============================================================================
+
+
+def translate_fields_for_frontend(backend_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Translate backend field names to frontend form field names.
+
+    This function maps the snake_case backend fields (and ai_ prefixed fields)
+    to the camelCase fields expected by the frontend progressive enrichment form.
+
+    Critical fixes:
+    - company_name → name (user was manually entering this!)
+    - region → state (user was manually entering city/state!)
+    - ai_* → remove prefix (ai_industry → industry)
+    - snake_case → camelCase for Clearbit fields
+
+    Args:
+        backend_data: Field data from enrichment sources
+
+    Returns:
+        Translated field data matching frontend form expectations
+    """
+    translation_map = {
+        # Layer 1 (Metadata + IP API) - CRITICAL FIXES
+        "company_name": "name",           # ← User manually entered this (HIGH PRIORITY)
+        "region": "state",                 # ← User manually entered this (HIGH PRIORITY)
+        "country_name": "countryName",
+        "ip_address": "ipAddress",
+        "ip_location": "ipLocation",
+
+        # Layer 2 (Clearbit + ReceitaWS + Google)
+        "employee_count": "employeeCount",
+        "annual_revenue": "annualRevenue",
+        "legal_name": "legalName",
+        "reviews_count": "reviewsCount",
+
+        # Layer 3 (AI Inference - remove ai_ prefix for frontend)
+        "ai_industry": "industry",
+        "ai_company_size": "companySize",
+        "ai_digital_maturity": "digitalMaturity",
+        "ai_target_audience": "targetAudience",
+        "ai_key_differentiators": "keyDifferentiators",
+
+        # Additional mappings (snake_case → camelCase)
+        "founded_year": "foundedYear",
+        "website_tech": "websiteTech",
+        "meta_description": "metaDescription",
+        "meta_keywords": "metaKeywords",
+        "logo_url": "logoUrl",
+        "social_media": "socialMedia",
+        "place_id": "placeId",
+    }
+
+    # Apply translation
+    frontend_data = {}
+    for backend_key, value in backend_data.items():
+        # Use translated name if available, otherwise keep original
+        frontend_key = translation_map.get(backend_key, backend_key)
+        frontend_data[frontend_key] = value
+
+    return frontend_data
+
+
+# ============================================================================
 # GLOBAL STATE (In-memory session storage)
 # ============================================================================
 
@@ -240,30 +305,30 @@ async def stream_progressive_enrichment(session_id: str):
             # Send update if status changed
             if current_status != last_status:
                 if current_status == "layer1_complete":
-                    # Send Layer 1 data
+                    # Send Layer 1 data (TRANSLATE FIELDS FOR FRONTEND)
                     layer1_data = {
                         "status": "layer1_complete",
-                        "fields": session.fields_auto_filled,
+                        "fields": translate_fields_for_frontend(session.fields_auto_filled),
                         "confidence_scores": session.confidence_scores,
                         "layer_result": session.layer1_result.dict() if session.layer1_result else {}
                     }
                     yield f"event: layer1_complete\ndata: {json.dumps(layer1_data)}\n\n"
 
                 elif current_status == "layer2_complete":
-                    # Send Layer 2 data
+                    # Send Layer 2 data (TRANSLATE FIELDS FOR FRONTEND)
                     layer2_data = {
                         "status": "layer2_complete",
-                        "fields": session.fields_auto_filled,
+                        "fields": translate_fields_for_frontend(session.fields_auto_filled),
                         "confidence_scores": session.confidence_scores,
                         "layer_result": session.layer2_result.dict() if session.layer2_result else {}
                     }
                     yield f"event: layer2_complete\ndata: {json.dumps(layer2_data)}\n\n"
 
                 elif current_status == "complete":
-                    # Send Layer 3 data (final)
+                    # Send Layer 3 data (final) - (TRANSLATE FIELDS FOR FRONTEND)
                     layer3_data = {
                         "status": "complete",
-                        "fields": session.fields_auto_filled,
+                        "fields": translate_fields_for_frontend(session.fields_auto_filled),
                         "confidence_scores": session.confidence_scores,
                         "layer_result": session.layer3_result.dict() if session.layer3_result else {},
                         "total_cost_usd": session.total_cost_usd,
@@ -354,7 +419,7 @@ async def get_session_status(session_id: str):
     Get current status of enrichment session (non-streaming)
 
     Returns:
-        Current session state with all available data
+        Current session state with all available data (fields translated for frontend)
     """
     if session_id not in active_sessions:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -364,7 +429,7 @@ async def get_session_status(session_id: str):
     return {
         "session_id": session.session_id,
         "status": session.status,
-        "fields_auto_filled": session.fields_auto_filled,
+        "fields_auto_filled": translate_fields_for_frontend(session.fields_auto_filled),
         "confidence_scores": session.confidence_scores,
         "total_cost_usd": session.total_cost_usd,
         "total_duration_ms": session.total_duration_ms
