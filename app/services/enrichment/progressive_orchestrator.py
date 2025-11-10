@@ -151,21 +151,10 @@ class ProgressiveEnrichmentOrchestrator:
             user_email=user_email
         )
 
-        # Check cache (quick check for full enrichment)
-        cache_key = f"progressive:{domain}"
-        cached_data = await self.cache.get(cache_key)
-
-        if cached_data:
-            logger.info(f"Cache HIT for progressive enrichment: {domain}")
-            # Return cached data immediately (all layers complete)
-            session.layer1_result = LayerResult(**cached_data["layer1"])
-            session.layer2_result = LayerResult(**cached_data["layer2"])
-            session.layer3_result = LayerResult(**cached_data["layer3"])
-            session.fields_auto_filled = cached_data["fields_auto_filled"]
-            session.confidence_scores = cached_data["confidence_scores"]
-            session.status = "complete"
-            session.total_cost_usd = 0.0  # Cache hit = free
-            return session
+        # NOTE: Cache check disabled for progressive enrichment
+        # Progressive enrichment needs real-time updates via SSE
+        # Caching would skip layers and break the progressive UX
+        # TODO: Re-enable once we have proper progressive cache invalidation
 
         # ====================================================================
         # LAYER 1: INSTANT DATA (<2s)
