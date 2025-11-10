@@ -94,8 +94,17 @@ class ProxycurlSource(EnrichmentSource):
         start_time = time.time()
 
         try:
+            # Gracefully handle missing API key (return empty result)
             if not self.api_key:
-                raise Exception("Proxycurl API key not configured")
+                logger.info("Proxycurl API key not configured - skipping")
+                return SourceResult(
+                    source_name=self.name,
+                    success=False,
+                    data={},
+                    cost_usd=0.0,
+                    duration_ms=0,
+                    error_message="Proxycurl API key not configured"
+                )
 
             linkedin_url = kwargs.get("linkedin_url")
             company_name = kwargs.get("company_name")

@@ -94,8 +94,17 @@ class GooglePlacesSource(EnrichmentSource):
         start_time = time.time()
 
         try:
+            # Gracefully handle missing API key (return empty result)
             if not self.api_key:
-                raise Exception("Google Places API key not configured")
+                logger.info("Google Places API key not configured - skipping")
+                return SourceResult(
+                    source_name=self.name,
+                    success=False,
+                    data={},
+                    cost_usd=0.0,
+                    duration_ms=0,
+                    error_message="Google Places API key not configured"
+                )
 
             company_name = kwargs.get("company_name")
             if not company_name:
