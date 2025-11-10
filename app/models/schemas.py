@@ -43,6 +43,7 @@ class SubmissionCreate(BaseModel):
     linkedin_founder: Optional[str] = None
     industry: IndustryEnum
     challenge: Optional[str] = None
+    enrichment_session_id: Optional[str] = None  # Session ID from Phase 1 form enrichment
 
     @field_validator('name', 'company')
     @classmethod

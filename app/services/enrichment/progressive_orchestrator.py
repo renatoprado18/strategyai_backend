@@ -69,6 +69,7 @@ class ProgressiveEnrichmentSession(BaseModel):
     fields_auto_filled: Dict[str, Any] = {}
     confidence_scores: Dict[str, float] = {}
     status: str = "pending"  # pending/layer1_complete/layer2_complete/complete
+    started_at: Optional[datetime] = None  # Session start timestamp
 
 
 # ============================================================================

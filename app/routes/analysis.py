@@ -68,12 +68,24 @@ router = APIRouter(prefix="/api")
     description="""
     Submit a new business analysis lead form (Public endpoint - no authentication required).
 
+    **Two-Phase Workflow:**
+
+    **Phase 1 (Optional): Form Enrichment**
+    - Use `/api/form/enrich` to pre-fill form fields (5-10 seconds)
+    - Returns `session_id` for reuse in Phase 2
+    - Caches enrichment data to avoid re-scraping
+
+    **Phase 2: Strategic Analysis**
+    - Use this endpoint with optional `enrichment_session_id`
+    - If session_id provided, reuses cached enrichment data
+    - Runs full 6-stage strategic analysis (2-5 minutes)
+
     **Process Flow:**
     1. **Validation:** Validates all input fields (email, URLs, text length)
     2. **Rate Limiting:** Checks IP-based rate limit (3 submissions per day)
     3. **Database:** Creates submission record in Supabase
     4. **Background Processing:** Triggers async AI analysis pipeline:
-       - Stage 1: Data Extraction (Apify + web scraping)
+       - Stage 1: Data Extraction (Apify + web scraping) - SKIPPED if session_id provided
        - Stage 2: Gap Analysis
        - Stage 3: Strategic Analysis
        - Stage 4: Competitive Intelligence
@@ -81,7 +93,7 @@ router = APIRouter(prefix="/api")
        - Stage 6: Polish & Quality Check
 
     **Data Enrichment:**
-    - Website content scraping via Apify
+    - Website content scraping via Apify (or cached from Phase 1)
     - LinkedIn company profile extraction
     - LinkedIn founder profile analysis
     - Competitor research and market intelligence
@@ -93,7 +105,7 @@ router = APIRouter(prefix="/api")
 
     **Processing Time:**
     - Initial response: Immediate (< 100ms)
-    - Full analysis: 2-5 minutes
+    - Full analysis: 2-5 minutes (or 1-3 minutes with cached enrichment)
     - Monitor progress via SSE endpoint: `/api/submissions/{id}/stream`
 
     **Input Validation:**
@@ -103,8 +115,9 @@ router = APIRouter(prefix="/api")
     - Website: Valid URL with https:// (auto-added if missing)
     - LinkedIn URLs: Valid LinkedIn profile/company URLs
     - Challenge: Maximum 200 characters, XSS protection enabled
+    - enrichment_session_id: Optional UUID from Phase 1 form enrichment
 
-    **Example Request:**
+    **Example Request (without enrichment):**
     ```bash
     curl -X POST https://api.example.com/api/submit \\
       -H "Content-Type: application/json" \\
@@ -117,6 +130,23 @@ router = APIRouter(prefix="/api")
         "linkedin_founder": "https://linkedin.com/in/joao-silva",
         "industry": "Tecnologia",
         "challenge": "Expandir base de clientes B2B"
+      }'
+    ```
+
+    **Example Request (with cached enrichment):**
+    ```bash
+    curl -X POST https://api.example.com/api/submit \\
+      -H "Content-Type: application/json" \\
+      -d '{
+        "name": "João Silva",
+        "email": "joao@techcorp.com.br",
+        "company": "TechCorp Solutions",
+        "website": "https://techcorp.com.br",
+        "linkedin_company": "https://linkedin.com/company/techcorp",
+        "linkedin_founder": "https://linkedin.com/in/joao-silva",
+        "industry": "Tecnologia",
+        "challenge": "Expandir base de clientes B2B",
+        "enrichment_session_id": "abc-123-def-456"
       }'
     ```
     """,
@@ -186,6 +216,26 @@ async def submit_lead(
         # Check rate limit using Upstash Redis
         await check_rate_limit(client_ip)
 
+        # Load cached enrichment data if session_id provided (Phase 1 → Phase 2)
+        cached_enrichment = None
+        if submission.enrichment_session_id:
+            try:
+                from app.services.enrichment.form_enrichment_cache import FormEnrichmentCache
+                cache = FormEnrichmentCache()
+                cached_enrichment = await cache.load_session(submission.enrichment_session_id)
+
+                if cached_enrichment:
+                    logger.info(
+                        f"[CACHE HIT] Using cached enrichment: session_id={submission.enrichment_session_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"[CACHE MISS] Enrichment session not found: {submission.enrichment_session_id}"
+                    )
+            except Exception as e:
+                logger.error(f"[CACHE ERROR] Failed to load enrichment session: {e}", exc_info=True)
+                # Continue without cache - will do full enrichment
+
         # Normalize website URL (add https:// if missing)
         normalized_website = normalize_website_url(submission.website) if submission.website else None
 
@@ -202,9 +252,18 @@ async def submit_lead(
         )
 
         # Trigger background analysis with Apify enrichment
-        background_tasks.add_task(process_analysis_task, submission_id)
+        # Pass cached_enrichment to skip data gathering if available
+        background_tasks.add_task(
+            process_analysis_task,
+            submission_id,
+            False,  # force_regenerate
+            cached_enrichment  # Pass cached enrichment data
+        )
 
-        logger.info(f"[OK] New submission created: ID={submission_id}, Company={submission.company}")
+        log_message = f"[OK] New submission created: ID={submission_id}, Company={submission.company}"
+        if cached_enrichment:
+            log_message += " (using cached enrichment)"
+        logger.info(log_message)
 
         return SubmissionResponse(
             success=True,
