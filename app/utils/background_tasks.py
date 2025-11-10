@@ -72,7 +72,11 @@ def clear_progress(submission_id: int):
 # BACKGROUND TASK: Process AI Analysis with Progress Tracking
 # ============================================================================
 
-async def process_analysis_task(submission_id: int, force_regenerate: bool = False):
+async def process_analysis_task(
+    submission_id: int,
+    force_regenerate: bool = False,
+    enrichment_data: dict = None
+):
     """
     Background task to generate AI analysis with Apify enrichment
 
@@ -80,6 +84,8 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
         submission_id: ID of the submission to process
         force_regenerate: If True, bypass analysis cache and force fresh AI generation
                          (still uses institutional memory cache for external data)
+        enrichment_data: Optional cached data from Phase 1 (form enrichment).
+                        If provided, skip re-scraping and use this data instead.
     """
     try:
         # Get submission details
@@ -88,7 +94,21 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
             logger.error(f"[ERROR] Submission {submission_id} not found")
             return
 
-        logger.info(f"[PROCESSING] Processing analysis for submission {submission_id}...")
+        # Log whether we're reusing Phase 1 data
+        if enrichment_data:
+            logger.info(
+                f"[PROCESSING] Processing analysis for submission {submission_id} (REUSING Phase 1 data)",
+                extra={
+                    "component": "background_tasks",
+                    "submission_id": submission_id,
+                    "reusing_enrichment": True,
+                    "has_layer1": bool(enrichment_data.get("layer1_data")),
+                    "has_layer2": bool(enrichment_data.get("layer2_data")),
+                    "has_layer3": bool(enrichment_data.get("layer3_data"))
+                }
+            )
+        else:
+            logger.info(f"[PROCESSING] Processing analysis for submission {submission_id}...")
 
         # Progress: Start - Update to 'queued' state
         await update_submission_processing_state(
@@ -222,6 +242,7 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
             start_time = time.time()
 
             # Generate analysis
+            # If enrichment_data provided (Phase 1 cache), pass it along to avoid re-scraping
             analysis = await generate_multistage_analysis(
                 company=submission["company"],
                 industry=submission["industry"],
@@ -229,6 +250,7 @@ async def process_analysis_task(submission_id: int, force_regenerate: bool = Fal
                 challenge=submission.get("challenge"),
                 apify_data=apify_data,
                 perplexity_data=perplexity_data,
+                enrichment_data=enrichment_data,  # NEW: Reuse Phase 1 data if available
                 run_all_stages=True,
                 perplexity_service=perplexity_service,
                 submission_id=submission_id  # Pass submission ID for comprehensive logging
