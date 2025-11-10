@@ -221,7 +221,7 @@ class ProgressiveEnrichmentOrchestrator:
             data=layer1_data,
             sources_called=layer1_sources,
             cost_usd=layer1_cost,
-            confidence_avg=self._calculate_avg_confidence(layer1_data)
+            confidence_avg=await self._calculate_avg_confidence(layer1_data)
         )
 
         session.status = "layer1_complete"
@@ -231,7 +231,7 @@ class ProgressiveEnrichmentOrchestrator:
 
         # Update auto-fill suggestions from Layer 1
         try:
-            self._update_auto_fill_suggestions(session, layer1_data, confidence_threshold=70)
+            await self._update_auto_fill_suggestions(session, layer1_data, "Layer1", confidence_threshold=70)
         except Exception as e:
             logger.warning(f"Failed to update auto-fill suggestions from Layer 1: {e}")
 
@@ -282,7 +282,7 @@ class ProgressiveEnrichmentOrchestrator:
             data=layer2_data,
             sources_called=layer2_sources,
             cost_usd=layer2_cost,
-            confidence_avg=self._calculate_avg_confidence(layer2_data)
+            confidence_avg=await self._calculate_avg_confidence(layer2_data)
         )
 
         session.status = "layer2_complete"
@@ -292,7 +292,7 @@ class ProgressiveEnrichmentOrchestrator:
 
         # Update auto-fill suggestions from Layer 2
         try:
-            self._update_auto_fill_suggestions(session, layer2_data, confidence_threshold=85)
+            await self._update_auto_fill_suggestions(session, layer2_data, "Layer2", confidence_threshold=85)
         except Exception as e:
             logger.warning(f"Failed to update auto-fill suggestions from Layer 2: {e}")
 
@@ -388,7 +388,7 @@ class ProgressiveEnrichmentOrchestrator:
             data=layer3_data,
             sources_called=layer3_sources,
             cost_usd=layer3_cost,
-            confidence_avg=self._calculate_avg_confidence(layer3_data)
+            confidence_avg=await self._calculate_avg_confidence(layer3_data)
         )
 
         session.status = "complete"  # ALWAYS complete, never error
@@ -403,7 +403,7 @@ class ProgressiveEnrichmentOrchestrator:
 
         # Update auto-fill suggestions from Layer 3
         try:
-            self._update_auto_fill_suggestions(session, layer3_data, confidence_threshold=75)
+            await self._update_auto_fill_suggestions(session, layer3_data, "Layer3", confidence_threshold=75)
         except Exception as e:
             logger.warning(f"Failed to update auto-fill suggestions from Layer 3: {e}")
 
@@ -585,18 +585,19 @@ class ProgressiveEnrichmentOrchestrator:
 
         return 50.0  # Default moderate confidence
 
-    def _calculate_avg_confidence(self, data: Dict[str, Any]) -> float:
+    async def _calculate_avg_confidence(self, data: Dict[str, Any]) -> float:
         """Calculate average confidence for dataset"""
         if not data:
             return 0.0
 
-        total_confidence = sum(
-            self._estimate_field_confidence(field, value)
-            for field, value in data.items()
-            if value is not None
-        )
+        # Collect confidence scores with proper async/await
+        confidences = []
+        for field, value in data.items():
+            if value is not None:
+                conf = await self._estimate_field_confidence(field, value)
+                confidences.append(conf)
 
-        return total_confidence / len(data)
+        return sum(confidences) / len(confidences) if confidences else 0.0
 
     async def _empty_result(self):
         """Return empty enrichment result"""
