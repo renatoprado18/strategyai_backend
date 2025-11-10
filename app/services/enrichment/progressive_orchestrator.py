@@ -24,9 +24,17 @@ from app.services.enrichment.sources.proxycurl import ProxycurlSource
 from app.services.enrichment.cache import EnrichmentCache
 from app.services.ai.openrouter_client import get_openrouter_client
 from app.core.supabase import supabase_service
-from app.services.enrichment.confidence_learner import ConfidenceLearner
 
 logger = logging.getLogger(__name__)
+
+# Optional Phase 6 ML learning system (requires SQLAlchemy rewrite for Supabase)
+try:
+    from app.services.enrichment.confidence_learner import ConfidenceLearner
+    CONFIDENCE_LEARNER_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Phase 6 ML learning disabled: {e}")
+    ConfidenceLearner = None
+    CONFIDENCE_LEARNER_AVAILABLE = False
 
 
 # ============================================================================
@@ -96,8 +104,10 @@ class ProgressiveEnrichmentOrchestrator:
         # Cache
         self.cache = EnrichmentCache(supabase_service)
 
-        # Learning system
-        self.confidence_learner = ConfidenceLearner()
+        # Learning system (optional - Phase 6)
+        self.confidence_learner = ConfidenceLearner() if CONFIDENCE_LEARNER_AVAILABLE else None
+        if not CONFIDENCE_LEARNER_AVAILABLE:
+            logger.info("Phase 6 ML learning disabled - requires SQLAlchemy to Supabase rewrite")
 
     async def enrich_progressive(
         self,
