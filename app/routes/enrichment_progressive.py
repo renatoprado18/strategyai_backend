@@ -26,7 +26,7 @@ from app.services.enrichment.validators import (
     validate_url,
     ValidationResult
 )
-from app.core.cache import get_redis_client
+from app.core.security.rate_limiter import get_redis_client
 
 logger = logging.getLogger(__name__)
 
