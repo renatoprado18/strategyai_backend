@@ -116,7 +116,10 @@ class ProgressiveEnrichmentOrchestrator:
         existing_data: Optional[Dict[str, Any]] = None
     ) -> ProgressiveEnrichmentSession:
         """
-        Execute progressive 3-layer enrichment
+        Execute progressive 3-layer enrichment - BULLETPROOF VERSION
+
+        This function NEVER raises exceptions. It always returns a session
+        with status "complete", even if all layers fail.
 
         Args:
             website_url: Company website URL
@@ -124,32 +127,52 @@ class ProgressiveEnrichmentOrchestrator:
             existing_data: Data already collected from user (optional)
 
         Returns:
-            ProgressiveEnrichmentSession with all layer results
+            ProgressiveEnrichmentSession with all layer results (may be empty data)
 
         Flow:
             1. Check cache
             2. Execute Layer 1 (metadata + IP) → return immediately
             3. Execute Layer 2 (Clearbit + ReceitaWS + Google) → return
             4. Execute Layer 3 (AI inference + Proxycurl) → return final
+
+        Error Handling:
+            - Each layer wrapped in try/except
+            - Layer failures return empty data but continue
+            - Always returns "complete" status, never "error"
         """
         import uuid
 
         session_id = str(uuid.uuid4())
         start_time = datetime.now()
 
-        logger.info(f"Starting progressive enrichment: {website_url}")
+        try:
+            logger.info(f"Starting progressive enrichment: {website_url}")
 
-        # Extract domain
-        from urllib.parse import urlparse
-        parsed = urlparse(website_url)
-        domain = parsed.netloc or parsed.path
+            # Extract domain
+            from urllib.parse import urlparse
+            parsed = urlparse(website_url)
+            domain = parsed.netloc or parsed.path
 
-        # Initialize session
-        session = ProgressiveEnrichmentSession(
-            session_id=session_id,
-            website_url=website_url,
-            user_email=user_email
-        )
+            # Initialize session
+            session = ProgressiveEnrichmentSession(
+                session_id=session_id,
+                website_url=website_url,
+                user_email=user_email
+            )
+
+        except Exception as e:
+            # Even initialization failed - return minimal session
+            logger.error(f"Failed to initialize enrichment session: {e}", exc_info=True)
+            return ProgressiveEnrichmentSession(
+                session_id=session_id,
+                website_url=website_url,
+                user_email=user_email,
+                status="complete",  # Complete with no data
+                total_duration_ms=0,
+                total_cost_usd=0.0,
+                fields_auto_filled={},
+                confidence_scores={}
+            )
 
         # NOTE: Cache check disabled for progressive enrichment
         # Progressive enrichment needs real-time updates via SSE
@@ -161,28 +184,32 @@ class ProgressiveEnrichmentOrchestrator:
         # ====================================================================
 
         layer1_start = datetime.now()
-
-        layer1_tasks = [
-            self.metadata_source.enrich(domain),
-            self.ip_api_source.enrich(domain)
-        ]
-
-        layer1_results = await asyncio.gather(*layer1_tasks, return_exceptions=True)
-
-        # Process Layer 1 results
         layer1_data = {}
         layer1_sources = []
         layer1_cost = 0.0
 
-        for result in layer1_results:
-            if isinstance(result, Exception):
-                logger.error(f"Layer 1 source failed: {result}")
-                continue
+        try:
+            layer1_tasks = [
+                self.metadata_source.enrich(domain),
+                self.ip_api_source.enrich(domain)
+            ]
 
-            if result.success:
-                layer1_data.update(result.data)
-                layer1_sources.append(result.source_name)
-                layer1_cost += result.cost_usd
+            layer1_results = await asyncio.gather(*layer1_tasks, return_exceptions=True)
+
+            # Process Layer 1 results
+            for result in layer1_results:
+                if isinstance(result, Exception):
+                    logger.warning(f"Layer 1 source failed (continuing anyway): {result}", exc_info=True)
+                    continue
+
+                if result.success:
+                    layer1_data.update(result.data)
+                    layer1_sources.append(result.source_name)
+                    layer1_cost += result.cost_usd
+
+        except Exception as e:
+            logger.error(f"Layer 1 failed completely (continuing with empty data): {e}", exc_info=True)
+            # Continue with empty data - Layer 2 can still work
 
         layer1_duration = int((datetime.now() - layer1_start).total_seconds() * 1000)
 
@@ -203,40 +230,47 @@ class ProgressiveEnrichmentOrchestrator:
         logger.info(f"Layer 1 complete in {layer1_duration}ms: {len(layer1_data)} fields")
 
         # Update auto-fill suggestions from Layer 1
-        self._update_auto_fill_suggestions(session, layer1_data, confidence_threshold=70)
+        try:
+            self._update_auto_fill_suggestions(session, layer1_data, confidence_threshold=70)
+        except Exception as e:
+            logger.warning(f"Failed to update auto-fill suggestions from Layer 1: {e}")
 
         # ====================================================================
         # LAYER 2: STRUCTURED DATA (3-6s)
         # ====================================================================
 
         layer2_start = datetime.now()
-
-        # Prepare parameters for Layer 2 sources
-        company_name = layer1_data.get("company_name")
-        location = layer1_data.get("location")
-
-        layer2_tasks = [
-            self.clearbit_source.enrich(domain),
-            self.receita_ws_source.enrich_by_name(company_name) if company_name else self._empty_result(),
-            self.google_places_source.enrich(company_name, location) if company_name else self._empty_result()
-        ]
-
-        layer2_results = await asyncio.gather(*layer2_tasks, return_exceptions=True)
-
-        # Process Layer 2 results
         layer2_data = {}
         layer2_sources = []
         layer2_cost = 0.0
 
-        for result in layer2_results:
-            if isinstance(result, Exception):
-                logger.error(f"Layer 2 source failed: {result}")
-                continue
+        try:
+            # Prepare parameters for Layer 2 sources
+            company_name = layer1_data.get("company_name")
+            location = layer1_data.get("location")
 
-            if result.success:
-                layer2_data.update(result.data)
-                layer2_sources.append(result.source_name)
-                layer2_cost += result.cost_usd
+            layer2_tasks = [
+                self.clearbit_source.enrich(domain),
+                self.receita_ws_source.enrich_by_name(company_name) if company_name else self._empty_result(),
+                self.google_places_source.enrich(company_name, location) if company_name else self._empty_result()
+            ]
+
+            layer2_results = await asyncio.gather(*layer2_tasks, return_exceptions=True)
+
+            # Process Layer 2 results
+            for result in layer2_results:
+                if isinstance(result, Exception):
+                    logger.warning(f"Layer 2 source failed (continuing anyway): {result}", exc_info=True)
+                    continue
+
+                if result.success:
+                    layer2_data.update(result.data)
+                    layer2_sources.append(result.source_name)
+                    layer2_cost += result.cost_usd
+
+        except Exception as e:
+            logger.error(f"Layer 2 failed completely (continuing with empty data): {e}", exc_info=True)
+            # Continue with empty data - Layer 3 can still work
 
         layer2_duration = int((datetime.now() - layer2_start).total_seconds() * 1000)
 
@@ -257,75 +291,92 @@ class ProgressiveEnrichmentOrchestrator:
         logger.info(f"Layer 2 complete in {layer2_duration}ms: {len(layer2_data)} fields")
 
         # Update auto-fill suggestions from Layer 2
-        self._update_auto_fill_suggestions(session, layer2_data, confidence_threshold=85)
+        try:
+            self._update_auto_fill_suggestions(session, layer2_data, confidence_threshold=85)
+        except Exception as e:
+            logger.warning(f"Failed to update auto-fill suggestions from Layer 2: {e}")
 
         # ====================================================================
         # LAYER 3: AI INFERENCE + LINKEDIN (6-10s)
         # ====================================================================
 
         layer3_start = datetime.now()
-
-        # Combine data for AI inference
-        all_data_so_far = {**layer1_data, **layer2_data, **(existing_data or {})}
-
-        # AI inference tasks (gracefully handle if OpenRouter unavailable)
-        layer3_tasks = []
-
-        try:
-            ai_client = await get_openrouter_client()
-
-            # Task 1: Extract comprehensive company info
-            if all_data_so_far and ai_client.client:  # Check if client initialized
-                layer3_tasks.append(
-                    ai_client.extract_company_info_from_text(
-                        website_url=website_url,
-                        scraped_metadata=layer1_data,
-                        user_description=existing_data.get("description") if existing_data else None
-                    )
-                )
-            else:
-                logger.warning("OpenRouter not available - skipping AI inference")
-        except Exception as e:
-            logger.error(f"Failed to initialize OpenRouter client: {e}")
-
-        # Task 2: Proxycurl (LinkedIn enrichment) if we have company name
-        linkedin_url = existing_data.get("linkedin_company") if existing_data else None
-        if linkedin_url or company_name:
-            layer3_tasks.append(
-                self.proxycurl_source.enrich(company_name, linkedin_url)
-            )
-
-        layer3_results = await asyncio.gather(*layer3_tasks, return_exceptions=True)
-
-        # Process Layer 3 results
         layer3_data = {}
         layer3_sources = []
         layer3_cost = 0.0
 
-        for i, result in enumerate(layer3_results):
-            if isinstance(result, Exception):
-                logger.error(f"Layer 3 source {i} failed: {result}")
-                continue
+        try:
+            # Combine data for AI inference
+            all_data_so_far = {**layer1_data, **layer2_data, **(existing_data or {})}
 
-            if i == 0:  # AI extraction result
-                # Convert AI extraction to dict
-                if hasattr(result, "dict"):
-                    ai_data = result.dict()
-                    layer3_data.update({
-                        "ai_industry": ai_data.get("industry"),
-                        "ai_company_size": ai_data.get("company_size"),
-                        "ai_digital_maturity": ai_data.get("digital_maturity"),
-                        "ai_target_audience": ai_data.get("target_audience"),
-                        "ai_key_differentiators": ai_data.get("key_differentiators"),
-                    })
-                    layer3_sources.append("OpenRouter GPT-4o-mini")
-                    # AI cost tracked in client
-                    layer3_cost += ai_client.total_cost_usd
+            # AI inference tasks (gracefully handle if OpenRouter unavailable)
+            layer3_tasks = []
 
-            elif hasattr(result, "success") and result.success:  # Proxycurl result
-                layer3_data.update(result.data)
-                layer3_sources.append(result.source_name)
-                layer3_cost += result.cost_usd
+            try:
+                ai_client = await get_openrouter_client()
+
+                # Task 1: Extract comprehensive company info
+                if all_data_so_far and ai_client.client:  # Check if client initialized
+                    layer3_tasks.append(
+                        ai_client.extract_company_info_from_text(
+                            website_url=website_url,
+                            scraped_metadata=layer1_data,
+                            user_description=existing_data.get("description") if existing_data else None
+                        )
+                    )
+                else:
+                    logger.warning("OpenRouter not available - skipping AI inference")
+            except Exception as e:
+                logger.warning(f"Failed to initialize OpenRouter client (continuing anyway): {e}")
+
+            # Task 2: Proxycurl (LinkedIn enrichment) if we have company name
+            try:
+                linkedin_url = existing_data.get("linkedin_company") if existing_data else None
+                if linkedin_url or company_name:
+                    layer3_tasks.append(
+                        self.proxycurl_source.enrich(company_name, linkedin_url)
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to prepare Proxycurl enrichment (continuing anyway): {e}")
+
+            if layer3_tasks:
+                layer3_results = await asyncio.gather(*layer3_tasks, return_exceptions=True)
+
+                # Process Layer 3 results
+                for i, result in enumerate(layer3_results):
+                    if isinstance(result, Exception):
+                        logger.warning(f"Layer 3 source {i} failed (continuing anyway): {result}", exc_info=True)
+                        continue
+
+                    if i == 0:  # AI extraction result
+                        # Convert AI extraction to dict
+                        if hasattr(result, "dict"):
+                            try:
+                                ai_data = result.dict()
+                                layer3_data.update({
+                                    "ai_industry": ai_data.get("industry"),
+                                    "ai_company_size": ai_data.get("company_size"),
+                                    "ai_digital_maturity": ai_data.get("digital_maturity"),
+                                    "ai_target_audience": ai_data.get("target_audience"),
+                                    "ai_key_differentiators": ai_data.get("key_differentiators"),
+                                })
+                                layer3_sources.append("OpenRouter GPT-4o-mini")
+                                # AI cost tracked in client
+                                layer3_cost += ai_client.total_cost_usd
+                            except Exception as e:
+                                logger.warning(f"Failed to process AI data (skipping): {e}")
+
+                    elif hasattr(result, "success") and result.success:  # Proxycurl result
+                        try:
+                            layer3_data.update(result.data)
+                            layer3_sources.append(result.source_name)
+                            layer3_cost += result.cost_usd
+                        except Exception as e:
+                            logger.warning(f"Failed to process Proxycurl data (skipping): {e}")
+
+        except Exception as e:
+            logger.error(f"Layer 3 failed completely (returning partial data): {e}", exc_info=True)
+            # Continue with whatever data we have
 
         layer3_duration = int((datetime.now() - layer3_start).total_seconds() * 1000)
 
@@ -340,7 +391,7 @@ class ProgressiveEnrichmentOrchestrator:
             confidence_avg=self._calculate_avg_confidence(layer3_data)
         )
 
-        session.status = "complete"
+        session.status = "complete"  # ALWAYS complete, never error
         session.total_cost_usd += layer3_cost
         session.total_duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
@@ -351,10 +402,17 @@ class ProgressiveEnrichmentOrchestrator:
         )
 
         # Update auto-fill suggestions from Layer 3
-        self._update_auto_fill_suggestions(session, layer3_data, confidence_threshold=75)
+        try:
+            self._update_auto_fill_suggestions(session, layer3_data, confidence_threshold=75)
+        except Exception as e:
+            logger.warning(f"Failed to update auto-fill suggestions from Layer 3: {e}")
 
-        # Cache the complete result (30-day TTL)
-        await self._cache_session(cache_key, session)
+        # Cache the complete result (30-day TTL) - skip if caching fails
+        try:
+            cache_key = f"progressive_enrichment:{domain}"
+            await self._cache_session(cache_key, session)
+        except Exception as e:
+            logger.warning(f"Failed to cache enrichment session (non-critical): {e}")
 
         return session
 

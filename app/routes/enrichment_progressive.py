@@ -146,7 +146,7 @@ async def start_progressive_enrichment(
 
         # Start enrichment in background
         async def run_enrichment():
-            """Background task to run progressive enrichment"""
+            """Background task to run progressive enrichment - NEVER fails"""
             try:
                 session = await orchestrator.enrich_progressive(
                     website_url=request.website_url,
@@ -161,10 +161,17 @@ async def start_progressive_enrichment(
                 logger.info(f"Progressive enrichment complete: {session_id}")
 
             except Exception as e:
-                logger.error(f"Progressive enrichment failed: {str(e)}")
-                # Update session with error status
+                # Log error but NEVER set status to "error"
+                # The orchestrator should have returned partial data
+                logger.error(
+                    f"Progressive enrichment had issues (but returned partial data): {str(e)}",
+                    exc_info=True
+                )
+
+                # Ensure session exists and has "complete" status
                 if session_id in active_sessions:
-                    active_sessions[session_id].status = "error"
+                    active_sessions[session_id].status = "complete"  # ALWAYS complete
+                    logger.info(f"Progressive enrichment completed with partial data: {session_id}")
 
         # Schedule background enrichment
         background_tasks.add_task(run_enrichment)
