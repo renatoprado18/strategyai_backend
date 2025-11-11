@@ -1,6 +1,9 @@
 """
 FastAPI Backend for Strategy AI Lead Generator
 Streamlined main application file with modular route organization
+
+Version: 2.3.0 - Form Enrichment with Graceful Supabase Initialization
+Last Updated: 2025-11-11 - Fixed 404 on /api/form/enrich endpoint
 """
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +36,7 @@ from app.routes.enrichment_progressive import router as progressive_enrichment_r
 from app.routes.progressive_enrichment_admin import router as progressive_admin_router
 from app.routes.enrichment_analytics import router as enrichment_analytics_router
 from app.routes.enrichment_edit_tracking import router as enrichment_edit_tracking_router
+from app.routes.form_enrichment import router as form_enrichment_router
 
 # Import custom OpenAPI schema generator
 from app.core.openapi import custom_openapi
@@ -255,6 +259,10 @@ Strategy AI is a comprehensive lead generation and business analysis system that
         {
             "name": "enrichment-learning",
             "description": "Progressive enrichment learning - user edit tracking and pattern analysis",
+        },
+        {
+            "name": "form-enrichment",
+            "description": "Fast form auto-fill - lightweight 5-10 second enrichment without strategic analysis",
         }
     ]
 )
@@ -672,6 +680,9 @@ app.include_router(progressive_enrichment_router, tags=["progressive-enrichment"
 app.include_router(progressive_admin_router, tags=["progressive-enrichment-admin"])
 app.include_router(enrichment_analytics_router, tags=["enrichment-analytics"])
 app.include_router(enrichment_edit_tracking_router, tags=["enrichment-learning"])
+
+# Form enrichment routes (Fast form auto-fill)
+app.include_router(form_enrichment_router, tags=["form-enrichment"])
 
 
 # ============================================================================
