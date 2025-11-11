@@ -1,0 +1,6 @@
+# Railway Deployment Status
+
+Latest commit: 5a5baf1 - CRITICAL form enrichment fixes
+Timestamp: 2025-11-11 14:32:15 UTC
+
+This file triggers Railway auto-deployment.
