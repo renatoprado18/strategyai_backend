@@ -41,6 +41,7 @@ async def generate_multistage_analysis(
     challenge: Optional[str],
     apify_data: Optional[Dict[str, Any]] = None,
     perplexity_data: Optional[Dict[str, Any]] = None,
+    enrichment_data: Optional[Dict[str, Any]] = None,
     run_all_stages: bool = True,
     perplexity_service = None,
     submission_id: int = 0
@@ -55,6 +56,7 @@ async def generate_multistage_analysis(
         challenge: Business challenge
         apify_data: Web scraping data
         perplexity_data: Initial Perplexity research
+        enrichment_data: Optional cached data from Phase 1 form enrichment (reuse, no re-scraping)
         run_all_stages: If True, run all 6 stages. If False, run only core stages (1,3,6)
         perplexity_service: Perplexity service instance for follow-up research
         submission_id: Submission ID for structured logging
