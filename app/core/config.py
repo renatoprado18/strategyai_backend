@@ -37,15 +37,15 @@ class Settings(BaseSettings):
     # ============================================================================
     # DATABASE (SUPABASE)
     # ============================================================================
-    supabase_url: str = Field(..., description="Supabase project URL")
-    supabase_service_key: str = Field(..., description="Supabase service role key (admin)")
-    supabase_anon_key: str = Field(..., description="Supabase anon/public key")
+    supabase_url: str = Field(default="", description="Supabase project URL")
+    supabase_service_key: str = Field(default="", description="Supabase service role key (admin)")
+    supabase_anon_key: str = Field(default="", description="Supabase anon/public key")
     database_url: str = Field(default="", description="Direct PostgreSQL connection URL (optional)")
 
     # ============================================================================
     # AUTHENTICATION & SECURITY
     # ============================================================================
-    jwt_secret: str = Field(..., description="Secret key for JWT signing")
+    jwt_secret: str = Field(default="insecure-dev-secret-change-in-production", description="Secret key for JWT signing")
     jwt_algorithm: str = Field(default="HS256", description="JWT algorithm")
     jwt_expiration_minutes: int = Field(default=10080, description="JWT expiration (default: 7 days)")
 
@@ -70,8 +70,8 @@ class Settings(BaseSettings):
     # ============================================================================
     # CACHING & RATE LIMITING (UPSTASH REDIS)
     # ============================================================================
-    upstash_redis_url: str = Field(..., description="Upstash Redis REST URL")
-    upstash_redis_token: str = Field(..., description="Upstash Redis REST token")
+    upstash_redis_url: str = Field(default="", description="Upstash Redis REST URL")
+    upstash_redis_token: str = Field(default="", description="Upstash Redis REST token")
 
     # ============================================================================
     # RATE LIMITING
