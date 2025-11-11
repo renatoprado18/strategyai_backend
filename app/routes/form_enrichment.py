@@ -16,7 +16,7 @@ from typing import Optional, Dict, Any
 from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.services.enrichment.progressive_orchestrator import (
     ProgressiveEnrichmentOrchestrator,
@@ -52,15 +52,27 @@ class FormEnrichmentRequest(BaseModel):
         example="jeff@google.com"
     )
 
-    @validator("website", pre=True, always=True)
-    def normalize_website(cls, v, values):
+    @model_validator(mode='before')
+    @classmethod
+    def check_website_or_url(cls, values):
         """Accept both 'website' and 'url' fields"""
-        # If website not provided, try url field
-        if not v and 'url' in values:
-            v = values.get('url')
+        website = values.get('website')
+        url = values.get('url')
 
-        if not v:
+        # Use whichever is provided
+        if not website and url:
+            values['website'] = url
+        elif not website and not url:
             raise ValueError("Either 'website' or 'url' field is required")
+
+        return values
+
+    @field_validator("website")
+    @classmethod
+    def validate_website(cls, v):
+        """Validate and normalize website URL"""
+        if not v:
+            return v
 
         # Add https:// if missing
         if not v.startswith(("http://", "https://")):
@@ -71,7 +83,8 @@ class FormEnrichmentRequest(BaseModel):
             raise ValueError(result.error_message or "Invalid website URL")
         return result.formatted_value or v
 
-    @validator("email")
+    @field_validator("email")
+    @classmethod
     def validate_email(cls, v):
         """Basic email validation"""
         if "@" not in v or "." not in v:
@@ -287,6 +300,12 @@ async def enrich_form(request: FormEnrichmentRequest):
         start_time = datetime.now()
 
         try:
+            # Validate inputs
+            if not request.website:
+                raise ValueError("Website URL is required")
+            if not request.email:
+                raise ValueError("Email is required")
+
             logger.info(f"[FORM ENRICHMENT] Starting: website={request.website}, email={request.email}")
 
             # Create orchestrator
@@ -417,14 +436,26 @@ async def enrich_form(request: FormEnrichmentRequest):
                 f"duration={total_duration}ms, cost=${session.total_cost_usd:.4f}"
             )
 
+        except ValueError as e:
+            # Validation error
+            logger.error(f"[FORM ENRICHMENT] Validation error: {str(e)}")
+            error_data = {
+                "status": "error",
+                "error": "validation_error",
+                "message": str(e)
+            }
+            yield f"event: error\n"
+            yield f"data: {json.dumps(error_data)}\n\n"
+
         except Exception as e:
-            # Send error event but don't crash
-            logger.error(f"[FORM ENRICHMENT] Error: {str(e)}", exc_info=True)
+            # Unexpected error - send error event but don't crash
+            logger.error(f"[FORM ENRICHMENT] Unexpected error: {str(e)}", exc_info=True)
 
             error_data = {
                 "status": "error",
-                "error": str(e),
-                "message": "Enrichment failed. Please try again."
+                "error": "internal_error",
+                "message": "Enrichment failed. Please try again.",
+                "details": str(e) if hasattr(e, '__str__') else "Unknown error"
             }
 
             yield f"event: error\n"
