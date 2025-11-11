@@ -58,6 +58,14 @@ class FormEnrichmentCache:
         Returns:
             True if saved successfully, False otherwise
         """
+        # Check if Supabase is available
+        if supabase_service is None:
+            logger.warning(
+                "[FormEnrichmentCache] Supabase not configured - session caching disabled",
+                extra={"component": "form_enrichment_cache", "session_id": session_id}
+            )
+            return False
+
         try:
             expires_at = datetime.now() + timedelta(days=self.ttl_days)
 
@@ -113,6 +121,14 @@ class FormEnrichmentCache:
         Returns:
             Enrichment data if found and not expired, None otherwise
         """
+        # Check if Supabase is available
+        if supabase_service is None:
+            logger.warning(
+                "[FormEnrichmentCache] Supabase not configured - cannot load session",
+                extra={"component": "form_enrichment_cache", "session_id": session_id}
+            )
+            return None
+
         try:
             # Query database for session
             result = await supabase_service.table("enrichment_sessions").select("*").eq(

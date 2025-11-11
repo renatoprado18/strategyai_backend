@@ -47,6 +47,14 @@ async def load_enrichment_session(session_id: str) -> Optional[Dict[str, Any]]:
         "expires_at": "2025-02-09T12:00:00Z"
     }
     """
+    # Check if Supabase is available
+    if supabase_service is None:
+        logger.warning(
+            "[SessionLoader] Supabase not configured - cannot load session",
+            extra={"component": "session_loader", "session_id": session_id}
+        )
+        return None
+
     try:
         logger.info(
             f"[SessionLoader] Loading enrichment session",
