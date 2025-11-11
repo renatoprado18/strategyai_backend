@@ -36,9 +36,14 @@ router = APIRouter(prefix="/api/form", tags=["Form Enrichment"])
 class FormEnrichmentRequest(BaseModel):
     """Request to enrich form with company data"""
 
-    website: str = Field(
-        ...,
+    website: Optional[str] = Field(
+        None,
         description="Company website URL (with or without https://)",
+        example="google.com"
+    )
+    url: Optional[str] = Field(
+        None,
+        description="Company website URL (alias for 'website')",
         example="google.com"
     )
     email: str = Field(
@@ -47,9 +52,16 @@ class FormEnrichmentRequest(BaseModel):
         example="jeff@google.com"
     )
 
-    @validator("website")
-    def validate_website(cls, v):
-        """Validate and normalize website URL"""
+    @validator("website", pre=True, always=True)
+    def normalize_website(cls, v, values):
+        """Accept both 'website' and 'url' fields"""
+        # If website not provided, try url field
+        if not v and 'url' in values:
+            v = values.get('url')
+
+        if not v:
+            raise ValueError("Either 'website' or 'url' field is required")
+
         # Add https:// if missing
         if not v.startswith(("http://", "https://")):
             v = f"https://{v}"
