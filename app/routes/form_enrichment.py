@@ -36,6 +36,8 @@ router = APIRouter(prefix="/api/form", tags=["Form Enrichment"])
 class FormEnrichmentRequest(BaseModel):
     """Request to enrich form with company data"""
 
+    model_config = {"extra": "ignore"}  # Ignore extra fields from frontend
+
     website: Optional[str] = Field(
         None,
         description="Company website URL (with or without https://)",
