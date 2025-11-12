@@ -1,0 +1,57 @@
+%% IMENSIAH Data Sources Diagram
+%% Use this with Mermaid Live Editor: https://mermaid.live
+
+graph LR
+    subgraph "Layer 1: Fast & Free < 2s"
+        META[Metadata Scraper<br>---<br>Cost: $0.00<br>Latency: 300-500ms<br>---<br>Provides:<br>• Company name<br>• Description<br>• Logo<br>• Technologies]
+
+        IPAPI[IP-API Geolocation<br>---<br>Cost: $0.00<br>Latency: 100-200ms<br>---<br>Provides:<br>• City, country<br>• Timezone<br>• Coordinates]
+    end
+
+    subgraph "Layer 2: Structured Data 3-6s"
+        CB[Clearbit<br>---<br>Cost: $0.10<br>Latency: 1-2s<br>---<br>Provides:<br>• Employee count<br>• Revenue<br>• Industry<br>• Founded year]
+
+        RWS[ReceitaWS<br>---<br>Cost: $0.00<br>Latency: 2-3s<br>---<br>Provides:<br>• CNPJ (Brazil)<br>• Legal name<br>• Registration<br>• Legal nature]
+
+        GP[Google Places<br>---<br>Cost: $0.034<br>Latency: 1-2s<br>---<br>Provides:<br>• Address<br>• Phone<br>• Rating<br>• Reviews]
+    end
+
+    subgraph "Layer 3: AI & Professional 6-10s"
+        OR[OpenRouter<br>GPT-4o-mini<br>---<br>Cost: $0.001<br>Latency: 3-5s<br>---<br>Provides:<br>• Industry class<br>• Company size<br>• Digital maturity<br>• Target audience]
+
+        PC[Proxycurl<br>LinkedIn<br>---<br>Cost: $0.02<br>Latency: 2-3s<br>---<br>Provides:<br>• LinkedIn URL<br>• Followers<br>• Description<br>• Specialties]
+    end
+
+    DOMAIN[Company<br>Domain<br>example.com] --> META
+    DOMAIN --> IPAPI
+    DOMAIN --> CB
+    DOMAIN --> RWS
+    DOMAIN --> GP
+    DOMAIN --> OR
+    DOMAIN --> PC
+
+    META --> ENRICHED[Enriched<br>Company Data]
+    IPAPI --> ENRICHED
+    CB --> ENRICHED
+    RWS --> ENRICHED
+    GP --> ENRICHED
+    OR --> ENRICHED
+    PC --> ENRICHED
+
+    %% Confidence Scores
+    ENRICHED --> HIGH[High Confidence<br>85-100%<br>---<br>ReceitaWS<br>Google Places<br>Clearbit]
+
+    ENRICHED --> MED[Medium Confidence<br>70-84%<br>---<br>Metadata<br>AI Classification]
+
+    ENRICHED --> LOW[Low Confidence<br>50-69%<br>---<br>IP Geolocation]
+
+    %% Styling
+    classDef free fill:#90EE90,stroke:#006400,stroke-width:2px
+    classDef paid fill:#FFB6C1,stroke:#8B0000,stroke-width:2px
+    classDef ai fill:#87CEEB,stroke:#00008B,stroke-width:2px
+    classDef confidence fill:#FFD700,stroke:#FF8C00,stroke-width:2px
+
+    class META,IPAPI,RWS free
+    class CB,GP,PC paid
+    class OR ai
+    class HIGH,MED,LOW confidence

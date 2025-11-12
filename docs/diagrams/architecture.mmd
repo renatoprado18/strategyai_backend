@@ -1,0 +1,101 @@
+%% IMENSIAH Architecture Diagram
+%% Use this with Mermaid Live Editor: https://mermaid.live
+
+graph TB
+    subgraph "Frontend"
+        UI[Form UI]
+        ES[EventSource API]
+    end
+
+    subgraph "FastAPI Backend"
+        API[Form Routes<br>/api/form/enrich]
+        SSE[SSE Stream Generator]
+        ORCH[Progressive<br>Orchestrator]
+
+        subgraph "Layer 1 - Free < 2s"
+            META[Metadata<br>Scraper]
+            IPAPI[IP-API<br>Geolocation]
+        end
+
+        subgraph "Layer 2 - Paid 3-6s"
+            CB[Clearbit<br>$0.10]
+            RWS[ReceitaWS<br>Free]
+            GP[Google Places<br>$0.03]
+        end
+
+        subgraph "Layer 3 - AI 6-10s"
+            OR[OpenRouter<br>GPT-4o-mini<br>$0.001]
+            PC[Proxycurl<br>LinkedIn<br>$0.02]
+        end
+
+        CACHE[Form Enrichment<br>Cache]
+        CB_CIRCUIT[Circuit<br>Breakers]
+    end
+
+    subgraph "External APIs"
+        EXT_CB[Clearbit API]
+        EXT_RWS[ReceitaWS API]
+        EXT_GP[Google Places API]
+        EXT_OR[OpenRouter API]
+        EXT_PC[Proxycurl API]
+    end
+
+    subgraph "Storage"
+        SUPABASE[(Supabase<br>PostgreSQL)]
+        MEMORY[In-Memory<br>Sessions]
+    end
+
+    %% Frontend Flow
+    UI -->|POST /api/form/enrich| API
+    API -->|Create SSE Stream| SSE
+    SSE -->|Stream Events| ES
+    ES -->|Update Fields| UI
+
+    %% Backend Flow
+    SSE -->|Start Enrichment| ORCH
+
+    %% Layer 1
+    ORCH -->|Parallel| META
+    ORCH -->|Parallel| IPAPI
+    META -->|Results 1-2s| ORCH
+    IPAPI -->|Results 0.2s| ORCH
+    ORCH -->|layer1_complete| SSE
+
+    %% Layer 2
+    ORCH -->|Parallel| CB
+    ORCH -->|Parallel| RWS
+    ORCH -->|Parallel| GP
+    CB -->|Protected by| CB_CIRCUIT
+    CB_CIRCUIT -->|Call| EXT_CB
+    RWS -->|Call| EXT_RWS
+    GP -->|Call| EXT_GP
+    CB -->|Results 1-2s| ORCH
+    RWS -->|Results 2-3s| ORCH
+    GP -->|Results 1-2s| ORCH
+    ORCH -->|layer2_complete| SSE
+
+    %% Layer 3
+    ORCH -->|Parallel| OR
+    ORCH -->|Parallel| PC
+    OR -->|Call| EXT_OR
+    PC -->|Call| EXT_PC
+    OR -->|Results 3-5s| ORCH
+    PC -->|Results 2-3s| ORCH
+    ORCH -->|layer3_complete| SSE
+
+    %% Caching
+    ORCH -->|Save Session| CACHE
+    CACHE -->|Store| MEMORY
+    CACHE -->|Persist| SUPABASE
+    ORCH -->|complete + session_id| SSE
+
+    %% Styling
+    classDef free fill:#90EE90,stroke:#006400,stroke-width:2px
+    classDef paid fill:#FFB6C1,stroke:#8B0000,stroke-width:2px
+    classDef ai fill:#87CEEB,stroke:#00008B,stroke-width:2px
+    classDef storage fill:#DDA0DD,stroke:#4B0082,stroke-width:2px
+
+    class META,IPAPI,RWS free
+    class CB,GP,PC paid
+    class OR ai
+    class SUPABASE,MEMORY storage

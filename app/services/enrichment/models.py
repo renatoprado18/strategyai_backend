@@ -255,6 +255,33 @@ class DeepEnrichmentData(EnrichmentData):
         None, description="Industry tags/categories"
     )
 
+    # NEW: Social media profiles (from enhanced metadata)
+    instagram: Optional[str] = Field(None, description="Instagram profile URL")
+    tiktok: Optional[str] = Field(None, description="TikTok profile URL")
+    linkedin_company: Optional[str] = Field(None, description="LinkedIn company page")
+    linkedin_founder: Optional[str] = Field(None, description="LinkedIn founder profile")
+    facebook: Optional[str] = Field(None, description="Facebook page URL")
+    twitter: Optional[str] = Field(None, description="Twitter/X profile URL")
+    youtube: Optional[str] = Field(None, description="YouTube channel URL")
+
+    # NEW: Contact information
+    whatsapp: Optional[str] = Field(None, description="WhatsApp number")
+    email: Optional[str] = Field(None, description="Contact email")
+
+    # NEW: AI-inferred strategic insights
+    ai_industry: Optional[str] = Field(None, description="AI-inferred industry")
+    ai_target_audience: Optional[str] = Field(None, description="B2B/B2C/Both")
+    ai_company_size: Optional[str] = Field(None, description="Micro/Pequena/Média/Grande")
+    ai_digital_maturity: Optional[str] = Field(None, description="Baixa/Média/Alta")
+    ai_communication_tone: Optional[str] = Field(None, description="Communication style")
+    ai_key_differentiators: Optional[List[str]] = Field(
+        None, description="Competitive advantages"
+    )
+    ai_strategic_focus: Optional[str] = Field(None, description="Strategic positioning")
+    ai_opportunities: Optional[List[str]] = Field(
+        None, description="Growth opportunities"
+    )
+
     # Timestamps (extends QuickEnrichmentData)
     quick_completed_at: Optional[datetime] = Field(
         None, description="When quick enrichment completed"

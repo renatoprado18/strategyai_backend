@@ -16,12 +16,16 @@ from typing import Dict, Any, List, Optional, Tuple
 from pydantic import BaseModel
 
 from app.services.enrichment.sources.metadata import MetadataSource
+from app.services.enrichment.sources.metadata_enhanced import EnhancedMetadataSource
 from app.services.enrichment.sources.ip_api import IpApiSource
 from app.services.enrichment.sources.clearbit import ClearbitSource
 from app.services.enrichment.sources.receita_ws import ReceitaWSSource
 from app.services.enrichment.sources.google_places import GooglePlacesSource
 from app.services.enrichment.sources.proxycurl import ProxycurlSource
+from app.services.enrichment.sources.ai_inference_enhanced import EnhancedAIInferenceSource
 from app.services.enrichment.cache import EnrichmentCache
+from app.services.enrichment.intelligent_orchestrator import IntelligentSourceOrchestrator
+from app.services.enrichment.confidence_scorer import calculate_confidence_for_session
 from app.services.ai.openrouter_client import get_openrouter_client
 from app.core.supabase import supabase_service
 
@@ -90,8 +94,8 @@ class ProgressiveEnrichmentOrchestrator:
     """
 
     def __init__(self):
-        # Layer 1 sources (free, instant)
-        self.metadata_source = MetadataSource()
+        # Layer 1 sources (free, instant) - ENHANCED
+        self.metadata_source = EnhancedMetadataSource()  # Enhanced with social media + structured data
         self.ip_api_source = IpApiSource()
 
         # Layer 2 sources (paid, parallel)
@@ -99,8 +103,12 @@ class ProgressiveEnrichmentOrchestrator:
         self.receita_ws_source = ReceitaWSSource()
         self.google_places_source = GooglePlacesSource()
 
-        # Layer 3 sources (AI + LinkedIn)
+        # Layer 3 sources (AI + LinkedIn) - ENHANCED
         self.proxycurl_source = ProxycurlSource()
+        self.ai_inference_source = EnhancedAIInferenceSource()  # Enhanced structured AI
+
+        # Intelligence systems
+        self.intelligent_orchestrator = IntelligentSourceOrchestrator()
 
         # Cache
         self.cache = EnrichmentCache(ttl_days=30)
@@ -298,7 +306,7 @@ class ProgressiveEnrichmentOrchestrator:
             logger.warning(f"Failed to update auto-fill suggestions from Layer 2: {e}")
 
         # ====================================================================
-        # LAYER 3: AI INFERENCE + LINKEDIN (6-10s)
+        # LAYER 3: AI INFERENCE + LINKEDIN (6-10s) - ENHANCED
         # ====================================================================
 
         layer3_start = datetime.now()
@@ -310,25 +318,22 @@ class ProgressiveEnrichmentOrchestrator:
             # Combine data for AI inference
             all_data_so_far = {**layer1_data, **layer2_data, **(existing_data or {})}
 
-            # AI inference tasks (gracefully handle if OpenRouter unavailable)
+            # Enhanced AI inference with structured extraction
             layer3_tasks = []
 
+            # Task 1: Enhanced AI inference with strategic insights
             try:
-                ai_client = await get_openrouter_client()
-
-                # Task 1: Extract comprehensive company info
-                if all_data_so_far and ai_client.client:  # Check if client initialized
-                    layer3_tasks.append(
-                        ai_client.extract_company_info_from_text(
-                            website_url=website_url,
-                            scraped_metadata=layer1_data,
-                            user_description=existing_data.get("description") if existing_data else None
-                        )
+                layer3_tasks.append(
+                    self.ai_inference_source.enrich(
+                        domain=domain,
+                        website_url=website_url,
+                        scraped_metadata=layer1_data,
+                        layer1_data=layer1_data,
+                        layer2_data=layer2_data
                     )
-                else:
-                    logger.warning("OpenRouter not available - skipping AI inference")
+                )
             except Exception as e:
-                logger.warning(f"Failed to initialize OpenRouter client (continuing anyway): {e}")
+                logger.warning(f"Failed to prepare AI inference (continuing anyway): {e}")
 
             # Task 2: Proxycurl (LinkedIn enrichment) if we have company name
             try:
@@ -349,31 +354,13 @@ class ProgressiveEnrichmentOrchestrator:
                         logger.warning(f"Layer 3 source {i} failed (continuing anyway): {result}", exc_info=True)
                         continue
 
-                    if i == 0:  # AI extraction result
-                        # Convert AI extraction to dict
-                        if hasattr(result, "dict"):
-                            try:
-                                ai_data = result.dict()
-                                layer3_data.update({
-                                    "ai_industry": ai_data.get("industry"),
-                                    "ai_company_size": ai_data.get("company_size"),
-                                    "ai_digital_maturity": ai_data.get("digital_maturity"),
-                                    "ai_target_audience": ai_data.get("target_audience"),
-                                    "ai_key_differentiators": ai_data.get("key_differentiators"),
-                                })
-                                layer3_sources.append("OpenRouter GPT-4o-mini")
-                                # AI cost tracked in client
-                                layer3_cost += ai_client.total_cost_usd
-                            except Exception as e:
-                                logger.warning(f"Failed to process AI data (skipping): {e}")
-
-                    elif hasattr(result, "success") and result.success:  # Proxycurl result
+                    if hasattr(result, "success") and result.success:
                         try:
                             layer3_data.update(result.data)
                             layer3_sources.append(result.source_name)
                             layer3_cost += result.cost_usd
                         except Exception as e:
-                            logger.warning(f"Failed to process Proxycurl data (skipping): {e}")
+                            logger.warning(f"Failed to process Layer 3 data (skipping): {e}")
 
         except Exception as e:
             logger.error(f"Layer 3 failed completely (returning partial data): {e}", exc_info=True)
@@ -407,6 +394,30 @@ class ProgressiveEnrichmentOrchestrator:
             await self._update_auto_fill_suggestions(session, layer3_data, "Layer3", confidence_threshold=75)
         except Exception as e:
             logger.warning(f"Failed to update auto-fill suggestions from Layer 3: {e}")
+
+        # ====================================================================
+        # CALCULATE CONFIDENCE SCORES
+        # ====================================================================
+        try:
+            field_confidences, overall_confidence = calculate_confidence_for_session(
+                layer1_data=layer1_data,
+                layer2_data=layer2_data,
+                layer3_data=layer3_data,
+                layer1_sources=layer1_sources,
+                layer2_sources=layer2_sources,
+                layer3_sources=layer3_sources
+            )
+
+            # Add confidence metadata to session
+            session.confidence_scores = field_confidences
+
+            logger.info(
+                f"Calculated confidence scores: overall={overall_confidence:.2f}%, "
+                f"fields={len(field_confidences)}"
+            )
+
+        except Exception as e:
+            logger.warning(f"Failed to calculate confidence scores (non-critical): {e}")
 
         # Cache the complete result (30-day TTL) - skip if caching fails
         try:

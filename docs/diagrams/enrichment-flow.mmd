@@ -1,0 +1,59 @@
+%% IMENSIAH Enrichment Flow Sequence Diagram
+%% Use this with Mermaid Live Editor: https://mermaid.live
+
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Backend
+    participant L1 as Layer 1 Sources<br>(Metadata, IP-API)
+    participant L2 as Layer 2 Sources<br>(Clearbit, ReceitaWS, Google)
+    participant L3 as Layer 3 Sources<br>(OpenRouter, Proxycurl)
+    participant Cache as Supabase Cache
+
+    %% Initial Request
+    User->>Frontend: Enter website URL + email
+    Frontend->>Backend: POST /api/form/enrich
+    Note over Backend: Create session_id<br>Start SSE stream
+
+    %% Layer 1
+    Backend->>L1: Parallel enrichment (free)
+    activate L1
+    Note over L1: Metadata scraping<br>IP geolocation
+    L1-->>Backend: Results (< 2s)
+    deactivate L1
+    Backend-->>Frontend: SSE: layer1_complete
+    Note over Backend,Frontend: {name, city, description, logo}
+    Frontend->>User: Update form fields (instant)
+
+    %% Layer 2
+    Backend->>L2: Parallel enrichment (paid)
+    activate L2
+    Note over L2: Clearbit ($0.10)<br>ReceitaWS (free)<br>Google Places ($0.03)
+    L2-->>Backend: Results (3-6s)
+    deactivate L2
+    Backend-->>Frontend: SSE: layer2_complete
+    Note over Backend,Frontend: {employeeCount, revenue, cnpj, address}
+    Frontend->>User: Update form fields (progressive)
+
+    %% Layer 3
+    Backend->>L3: Parallel enrichment (AI)
+    activate L3
+    Note over L3: GPT-4o-mini ($0.001)<br>Proxycurl ($0.02)
+    L3-->>Backend: Results (6-10s)
+    deactivate L3
+    Backend-->>Frontend: SSE: layer3_complete
+    Note over Backend,Frontend: {industry, companySize, digitalMaturity}
+    Frontend->>User: Update form fields (final)
+
+    %% Complete and Cache
+    Backend->>Cache: Save session (30-day TTL)
+    Cache-->>Backend: Stored
+    Backend-->>Frontend: SSE: complete
+    Note over Backend,Frontend: {session_id, cost, duration}
+    Frontend->>User: Show success + session ID
+
+    %% User Actions
+    User->>Frontend: Review auto-filled data
+    User->>Frontend: Edit fields as needed
+    User->>Frontend: Submit form (with session_id)
+    Note over User,Frontend: Phase 2: Strategic Analysis<br>(uses cached enrichment)
