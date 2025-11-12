@@ -6,7 +6,7 @@ Provides common fixtures for testing API endpoints, services, and integrations
 import os
 import pytest
 import asyncio
-from typing import AsyncGenerator, Dict, Any
+from typing import AsyncGenerator, Dict, Any, List
 from unittest.mock import Mock, AsyncMock, MagicMock, patch
 from datetime import datetime, timedelta
 import json

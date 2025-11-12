@@ -1,0 +1,26 @@
+
+================================================================================
+PROGRESSIVE ENRICHMENT - FIELD TRANSLATION E2E TESTS
+ISOLATED TEST (No dependencies)
+================================================================================
+
+[TEST 1] Layer 1 Critical Field Translations
+--------------------------------------------------------------------------------
+Backend fields:
+  company_name: Google
+  region: São Paulo
+  city: São Paulo
+  country: BR
+
+Frontend fields:
+  name: Google
+  state: São Paulo
+  city: São Paulo
+  country: BR
+Traceback (most recent call last):
+  File "C:\Users\pradord\Documents\Projects\strategy-ai-backend\tests\test_translation_isolated.py", line 92, in <module>
+    print("\n\u2705 TEST 1 PASSED: Critical translations working")
+  File "C:\Users\pradord\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 2: character maps to <undefined>

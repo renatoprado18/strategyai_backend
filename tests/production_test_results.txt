@@ -1,0 +1,31 @@
+
+================================================================================
+STARTING COMPREHENSIVE PRODUCTION API TESTS
+================================================================================
+
+================================================================================
+TEST 1: Layer 1 (Metadata + IP-API)
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\pradord\Documents\Projects\strategy-ai-backend\tests\test_production_api_e2e.py", line 69, in test_layer1_metadata_ipapi
+    print(f"\u2705 Session created: {self.session_id}")
+  File "C:\Users\pradord\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 0: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\pradord\Documents\Projects\strategy-ai-backend\tests\test_production_api_e2e.py", line 674, in <module>
+    results = tester.run_all_tests()
+              ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\pradord\Documents\Projects\strategy-ai-backend\tests\test_production_api_e2e.py", line 637, in run_all_tests
+    result1 = self.test_layer1_metadata_ipapi()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\pradord\Documents\Projects\strategy-ai-backend\tests\test_production_api_e2e.py", line 152, in test_layer1_metadata_ipapi
+    print(f"\n\u274c Error: {e}")
+  File "C:\Users\pradord\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u274c' in position 2: character maps to <undefined>
