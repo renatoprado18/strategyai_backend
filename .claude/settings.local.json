@@ -3,7 +3,11 @@
     "allow": [
       "Bash(tree:*)",
       "Bash(pip install:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(git push:*)",
+      "Bash(nul)",
+      "Bash(findstr:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

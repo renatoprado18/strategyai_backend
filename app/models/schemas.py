@@ -45,6 +45,12 @@ class SubmissionCreate(BaseModel):
     challenge: Optional[str] = None
     enrichment_session_id: Optional[str] = None  # Session ID from Phase 1 form enrichment
 
+    # Social media and contact fields (NEW - optional for lead capture)
+    phone: Optional[str] = None
+    whatsapp: Optional[str] = None
+    instagram: Optional[str] = None
+    tiktok: Optional[str] = None
+
     @field_validator('name', 'company')
     @classmethod
     def validate_min_length(cls, v: str) -> str:
@@ -87,6 +93,42 @@ class SubmissionCreate(BaseModel):
             except ValueError as e:
                 raise ValueError(f'Invalid URL: {str(e)}')
         return v if v and v.strip() else None
+
+    @field_validator('phone', 'whatsapp')
+    @classmethod
+    def validate_phone_fields(cls, v: Optional[str]) -> Optional[str]:
+        """Validate phone/WhatsApp using enrichment validators"""
+        if v and v.strip():
+            from app.services.enrichment.validators import validate_phone
+            result = validate_phone(v)
+            if not result.is_valid:
+                raise ValueError(result.error_message or 'Invalid phone number')
+            return result.formatted_value
+        return None
+
+    @field_validator('instagram')
+    @classmethod
+    def validate_instagram_field(cls, v: Optional[str]) -> Optional[str]:
+        """Validate Instagram using enrichment validators"""
+        if v and v.strip():
+            from app.services.enrichment.validators import validate_instagram
+            result = validate_instagram(v)
+            if not result.is_valid:
+                raise ValueError(result.error_message or 'Invalid Instagram handle')
+            return result.formatted_value
+        return None
+
+    @field_validator('tiktok')
+    @classmethod
+    def validate_tiktok_field(cls, v: Optional[str]) -> Optional[str]:
+        """Validate TikTok using enrichment validators"""
+        if v and v.strip():
+            from app.services.enrichment.validators import validate_tiktok
+            result = validate_tiktok(v)
+            if not result.is_valid:
+                raise ValueError(result.error_message or 'Invalid TikTok handle')
+            return result.formatted_value
+        return None
 
 
 # Response Models

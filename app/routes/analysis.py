@@ -249,6 +249,10 @@ async def submit_lead(
             linkedin_founder=submission.linkedin_founder,
             industry=submission.industry.value,
             challenge=submission.challenge,
+            phone=submission.phone,
+            whatsapp=submission.whatsapp,
+            instagram=submission.instagram,
+            tiktok=submission.tiktok,
         )
 
         # Trigger background analysis with Apify enrichment

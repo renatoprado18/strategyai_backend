@@ -72,8 +72,12 @@ async def create_submission(
     linkedin_founder: Optional[str],
     industry: str,
     challenge: Optional[str],
+    phone: Optional[str] = None,
+    whatsapp: Optional[str] = None,
+    instagram: Optional[str] = None,
+    tiktok: Optional[str] = None,
 ) -> int:
-    """Create a new submission with LinkedIn fields for enhanced analysis"""
+    """Create a new submission with LinkedIn and social/contact fields for enhanced analysis"""
     try:
         data = {
             "name": name,
@@ -84,6 +88,10 @@ async def create_submission(
             "linkedin_founder": linkedin_founder,
             "industry": industry,
             "challenge": challenge,
+            "phone": phone,
+            "whatsapp": whatsapp,
+            "instagram": instagram,
+            "tiktok": tiktok,
             "status": "pending"
         }
 
