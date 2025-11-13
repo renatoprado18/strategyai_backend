@@ -48,9 +48,9 @@ class FormEnrichmentRequest(BaseModel):
         description="Company website URL (alias for 'website')",
         example="google.com"
     )
-    email: str = Field(
-        ...,
-        description="User's email address",
+    email: Optional[str] = Field(
+        None,
+        description="User's email address (optional for enrichment)",
         example="jeff@google.com"
     )
 
